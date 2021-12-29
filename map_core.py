@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import datetime
+import pygame
 
 
 # Constants
@@ -33,9 +34,13 @@ get_length = lambda x, y, x1, y1: ((x - x1) ** 2 + (y - y1) ** 2) ** 0.5
 
 # Classes
 class Map:
-    def __init__(self):
-        self.map = np.random.randint(1, 5, (150, 75))
-        self.centers = np.hstack([np.random.randint(6, 9, (50)), np.random.randint(10, 20, (10))])
+    def __init__(self, matrix=None, centers=None):
+        if matrix and centers:
+            self.map = np.array(matrix)
+            self.centers = np.array(centers)
+        else:
+            self.map = np.random.randint(1, 5, (150, 75))
+            self.centers = np.hstack([np.random.randint(6, 9, (50)), np.random.randint(10, 20, (10))])
 
         self.create_attractions(self.centers[0:9])
         self.create_attractions(self.centers[10:])
@@ -54,6 +59,11 @@ class Map:
             for k in range(start_y, start_y + fragment_size * 2):
                 for m in range(start_x, start_x + fragment_size * 2):
                     self.map[m, k] += int(strength * abs((get_length(x, y, m, k) / max_diagonal) - 1) * random.randint(1, 10) / 10)
+
+    def draw_map(self, surface, start_x=0, start_y=0):
+        for i in range(self.map.shape[1]):
+            for j in range(self.map.shape[0]):
+                pygame.draw.rect(surface, get_color(self.map[j, i]),(j * CELL_SIZE + start_x, i * CELL_SIZE + start_y, (j + 1) * CELL_SIZE, (i + 1) * CELL_SIZE))
 
 
 if __name__ == '__main__':
