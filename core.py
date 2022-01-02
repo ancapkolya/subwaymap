@@ -48,7 +48,6 @@ def get_font(size, bold=False):
 
 
 def create_text(screen, x, y, size, text='', bold=False):
-    print(1)
     text = get_font(size, bold).render(str(text), False, (0, 0, 0))
     screen.blit(text, (x, y))
 
@@ -68,12 +67,12 @@ class ActionData(OnClickMixin):
     status = 'watching'
 
     def clear(self, status='watching'):
-        for i in self.__dict__:
+        if 'on_click_func' in self.__dict__:
+            del self.on_click_func
+        for i in self.__dict__.copy():
             self.__setattr__(i, None)
             self.clicks = []
             self.status = status
-            if 'on_click_func' in self.__dict__:
-                del self.on_click_func
 
 
 class AutoTextRender:
@@ -151,6 +150,7 @@ class Button(pygame_gui.elements.UIButton, OnClickMixin):
 
 # sprites
 class MessageBox(pygame.sprite.Sprite):
+
     def __init__(self, *group, manager, text=None, draw_func=None):
         super().__init__(*group)
         self.image = pygame.Surface((300, 200), pygame.SRCALPHA, 32)
@@ -171,6 +171,7 @@ class MessageBox(pygame.sprite.Sprite):
 
 
 class MapSprite(pygame.sprite.Sprite):
+
     def __init__(self, *group, obj=None):
         super().__init__(*group)
         self.map = Map(obj.map, obj.centers) if obj else Map()
@@ -180,8 +181,28 @@ class MapSprite(pygame.sprite.Sprite):
 
 
 class Station(pygame.sprite.Sprite):
-    def __init__(self, *group, x, y):
-        super().__init__(*group)
+
+    def __init__(self, group, x, y):
+        super().__init__(group)
         self.image = pygame.Surface((20, 20), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(x - 10, y - 10, 20, 20)
-        pygame.draw.circle(self.image, pygame.Color("white"), (x, y), 10)
+        pygame.draw.circle(self.image, pygame.Color("white"), (10, 10), 8)
+        pygame.draw.circle(self.image, pygame.Color("black"), (10, 10), 8, 2)
+
+
+class Line(pygame.sprite.Sprite):
+
+    def __init__(self, group, x, y, x1, y1):
+        super().__init__(group)
+        self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
+        self.rect = pygame.Rect(300, 0, 1500, 750)
+
+        d_x, d_y = abs(x - x1), abs(y - y1)
+        if d_y >= d_x:
+            b_y = y1 + d_x * (y - y1) // d_y
+            pygame.draw.line(self.image, 'white', (x - 300, y), (x - 300, b_y), 8)
+            pygame.draw.line(self.image, 'white', (x - 300, b_y), (x1 - 300, y1), 10)
+        else:
+            b_x = x + (d_y + 5) * (x1 - x) // d_x - 300
+            pygame.draw.line(self.image, 'white', (x - 300, y), (b_x, y1), 10)
+            pygame.draw.line(self.image, 'white', (b_x, y1), (x1 - 300, y1), 8)

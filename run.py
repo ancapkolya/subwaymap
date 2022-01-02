@@ -2,6 +2,8 @@ import datetime
 import pygame
 
 import core
+import map_core
+import models
 
 
 # init
@@ -17,6 +19,9 @@ screen.fill('white')
 # actions
 action_data = core.ActionData()
 
+game_map = map_core.Map()
+SESSION = models.GameSession.create(map=game_map.map, centers=game_map.centers)
+
 
 # creating station
 def create_station_handler(self, event):
@@ -29,7 +34,8 @@ def create_station_handler(self, event):
 
 def accept_station_handler(self, event):
     if len(action_data.clicks) > 0:
-        create_station(action_data.clicks[-1])
+        create_station(self, commit=True)
+        self.on_click_func = create_station_handler
     else:
         core.MessageBox(
             all_sprites,
@@ -39,8 +45,56 @@ def accept_station_handler(self, event):
     self.reset_text()
 
 
-def create_station(pos):
-    print(pos)
+def create_station(btn, event=None, commit=False):
+    x, y = event.pos
+
+    cond = True
+    for l in SESSION.lines:
+        if not cond:
+            break
+        for s in l.stations:
+            if ((s.x - x) ** 2 + (s.y - y) ** 2) ** 0.5 < 30:
+                cond = False
+                break
+
+    if cond:
+        if commit:
+            models.Station.create()
+        elif len(action_data.clicks) > 0:
+            core.Station(subway_sprites, *action_data.clicks[-1])
+
+    return cond
+
+
+# creating lines
+def create_line_handler(self, event):
+    action_data.on_click_func = create_line_fr
+    action_data.status = 'creating_line'
+
+    self.set_text('accept')
+    self.on_click_func = accept_line_handler
+
+
+def accept_line_handler(self, event):
+    '''if len(action_data.clicks) > 0:
+        create_station(self, commit=True)
+        self.on_click_func = create_station_handler
+    else:
+        core.MessageBox(
+            all_sprites,
+            manager=ui_manager,
+            text="Возникла какая-то ошибка")
+    action_data.clear()
+    self.reset_text()'''
+    pass
+
+
+def create_line_fr(btn, event=None, commit=False):
+    if commit:
+        pass
+    else:
+        if len(action_data.clicks) > 1:
+            core.Line(subway_sprites, *action_data.clicks[-2], *action_data.clicks[-1])
 
 
 # UI
@@ -50,6 +104,7 @@ ui_manager = core.Manager((width, height), 'data/styles.json')
 # Groups
 text_render = core.AutoTextRender()
 all_sprites = pygame.sprite.Group()
+subway_sprites = pygame.sprite.Group()
 
 
 # Sprites
@@ -76,7 +131,7 @@ speed_3 = core.Button(relative_rect=pygame.Rect((200, 80), (85, 30)), text='1sec
 text_render.add_text(screen, 10, 125, 15, 'building', True)
 
 build_station = core.Button(relative_rect=pygame.Rect((10, 145), (135, 30)), text='build station', manager=ui_manager, on_click=create_station_handler)
-build_line = core.Button(relative_rect=pygame.Rect((155, 145), (135, 30)), text='build line', manager=ui_manager, on_click=create_station_handler)
+build_line = core.Button(relative_rect=pygame.Rect((155, 145), (135, 30)), text='build line', manager=ui_manager, on_click=create_line_handler)
 
 
 while running:
@@ -88,13 +143,14 @@ while running:
             running = False
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if action_data.status != 'watching':
-                if 150 < event.pos[0] < 1800 and 0 < event.pos[1] < 750:
+                if 300 < event.pos[0] < 1800 and 0 < event.pos[1] < 750:
                     action_data.clicks.append(event.pos)
             action_data.on_click(event)
         ui_manager.process_events(event)
 
     screen.fill('white')
     all_sprites.draw(screen)
+    subway_sprites.draw(screen)
     ui_manager.draw_ui(screen)
     text_render.render()
 

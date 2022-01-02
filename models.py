@@ -11,9 +11,12 @@ connection = SqliteDatabase('data.db')
 class EmptyClass: pass
 
 
-class JsonModel(Model):
-    json_fields = []
+class DefaultModel(Model):
+    class Meta:
+        database = connection
 
+
+class JsonModel(DefaultModel):
     def create(cls, **query):
         for field in cls.Meta.json_fields:
             query[field] = json.dumps(query[field])
@@ -29,39 +32,43 @@ class JsonModel(Model):
         for field in self.json_fields:
             self.loaded_data.__dict__[field] = json.loads(self.__dict__[field])
 
+    class Meta:
+        json_fields = []
+
 
 # models
 class GameSession(JsonModel):
-    score = IntegerField()
+    score = IntegerField(default=0)
     map = TextField()
     centers = TextField()
-    datetime = DateTimeField()
+    datetime = DateTimeField(default=datetime.datetime(year=2000, month=1, day=1, hour=1, minute=1, second=1, microsecond=1))
 
     class Meta:
-        database = connection
         json_fields = ['map', 'centers']
 
 
-    def create(cls, **query):
-        query['datetime'] = datetime.datetime(2000, 1, 1, 1, 1)
-        super().create(cls, **query)
+class Station(DefaultModel):
+    x = IntegerField()
+    y = IntegerField()
 
 
-class Line(Model):
+class Line(JsonModel):
     game = ForeignKeyField(GameSession, backref='lines')
+    stations = TextField()
+
+    class Meta:
+        json_fields = ['stations']
+
+
+class Route(JsonModel):
+    game = ForeignKeyField(GameSession, backref='routes')
+    stations = TextField()
     train_n = IntegerField()
 
     class Meta:
-        database = connection
-
-
-class Station(Model):
-    line = ForeignKeyField(GameSession, backref='stations')
-
-    class Meta:
-        database = connection
+        json_fields = ['stations']
 
 
 # creating models
 if __name__ == '__main__':
-    connection.create_tables([GameSession, Line, Station])
+    connection.create_tables([GameSession, Line, Station, Route])
