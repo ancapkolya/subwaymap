@@ -1,3 +1,5 @@
+import datetime
+
 from peewee import *
 import json
 
@@ -33,11 +35,16 @@ class GameSession(JsonModel):
     score = IntegerField()
     map = TextField()
     centers = TextField()
+    datetime = DateTimeField()
 
     class Meta:
         database = connection
         json_fields = ['map', 'centers']
 
+
+    def create(cls, **query):
+        query['datetime'] = datetime.datetime(2000, 1, 1, 1, 1)
+        super().create(cls, **query)
 
 
 class Line(Model):
