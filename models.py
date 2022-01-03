@@ -1,36 +1,28 @@
 import datetime
+import json
 
 from peewee import *
-import json
 
 
 connection = SqliteDatabase('data.db')
 
 
-# mixins
-class EmptyClass: pass
+class BaseModel(Model):
 
-
-class DefaultModel(Model):
     class Meta:
         database = connection
 
 
-class JsonModel(DefaultModel):
-    def create(cls, **query):
-        for field in cls.Meta.json_fields:
-            query[field] = json.dumps(query[field])
-        return super().create(cls, **query)
+class JsonModel(BaseModel):
 
     def save(self, *args, **kwargs):
-        for field in self.json_fields:
-            self.__dict__[field] = json.dumps(self.loaded_data.__dict__[field])
+        for field in self._meta.json_fields:
+            self.__data__[field] = json.dumps(self.__data__[field])
         super().save(*args, **kwargs)
 
     def load_data(self):
-        self.loaded_data = EmptyClass()
-        for field in self.json_fields:
-            self.loaded_data.__dict__[field] = json.loads(self.__dict__[field])
+        for field in self._meta.json_fields:
+            self.__data__[field] = json.loads(self.__data__[field])
 
     class Meta:
         json_fields = []
@@ -47,7 +39,8 @@ class GameSession(JsonModel):
         json_fields = ['map', 'centers']
 
 
-class Station(DefaultModel):
+class Station(BaseModel):
+    game = ForeignKeyField(GameSession, backref='stations')
     x = IntegerField()
     y = IntegerField()
 

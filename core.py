@@ -3,6 +3,8 @@ import os
 import sys
 import pygame
 
+import map_core
+import models
 from map_core import Map
 
 
@@ -61,18 +63,64 @@ class OnClickMixin:
 
 
 # classes
+class EmptyClass: pass
+
+
+class SessionSprites:
+    stations = list()
+    lines = list()
+
+
+class Session:
+
+    def __init__(self, group=None, pk=-1):
+        self.sprites = SessionSprites()
+        if pk > -1:
+            session = models.GameSession.get_or_none(id=pk)
+            if session:
+                self.session = session
+            else:
+                self.create_session()
+        else:
+            self.create_session()
+        self.session.load_data()
+        if group:
+            self.load_sprites(group)
+
+    def load_sprites(self, group):
+        for s in self.session.stations:
+            self.sprites.stations.append(Station(group, s.x, s.y))
+        for l in self.session.lines:
+            self.sprites.lines.append(Line(group, *l.stations))
+
+    def create_session(self):
+        game_map = map_core.Map()
+        self.session = models.GameSession(map=game_map.map.tolist(), centers=game_map.centers.tolist())
+        self.session.save()
+
+    def get_map(self):
+        return Map(matrix=self.session.map.copy(), centers=self.session.centers.copy())
+
+
 class ActionData(OnClickMixin):
 
     clicks = []
+    objects = []
+    sprites = []
     status = 'watching'
 
-    def clear(self, status='watching'):
+    def clear(self, kill=False, status='watching'):
         if 'on_click_func' in self.__dict__:
             del self.on_click_func
         for i in self.__dict__.copy():
             self.__setattr__(i, None)
-            self.clicks = []
-            self.status = status
+        if kill:
+            for i in self.sprites:
+                i.kill()
+        self.clicks = []
+        self.objects = []
+        self.sprites = []
+        self.status = status
 
 
 class AutoTextRender:
@@ -174,7 +222,7 @@ class MapSprite(pygame.sprite.Sprite):
 
     def __init__(self, *group, obj=None):
         super().__init__(*group)
-        self.map = Map(obj.map, obj.centers) if obj else Map()
+        self.map = Map() if obj is None else obj
         self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(300, 0, 1500, 750)
         self.map.draw_map(self.image)

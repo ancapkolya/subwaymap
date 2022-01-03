@@ -19,8 +19,7 @@ screen.fill('white')
 # actions
 action_data = core.ActionData()
 
-game_map = map_core.Map()
-SESSION = models.GameSession.create(map=game_map.map, centers=game_map.centers)
+SESSION = core.Session(pk=4)
 
 
 # creating station
@@ -46,22 +45,26 @@ def accept_station_handler(self, event):
 
 
 def create_station(btn, event=None, commit=False):
-    x, y = event.pos
-
     cond = True
-    for l in SESSION.lines:
-        if not cond:
-            break
-        for s in l.stations:
+    if commit and len(action_data.objects) > 0 and len(action_data.sprites) > 0:
+        action_data.objects[-1].save()
+        SESSION.sprites.stations.append(action_data.sprites[-1])
+    else:
+        x, y = event.pos
+
+        for s in SESSION.session.stations:
             if ((s.x - x) ** 2 + (s.y - y) ** 2) ** 0.5 < 30:
                 cond = False
                 break
 
-    if cond:
-        if commit:
-            models.Station.create()
-        elif len(action_data.clicks) > 0:
-            core.Station(subway_sprites, *action_data.clicks[-1])
+        if cond and len(action_data.clicks) > 0 and action_data.status == 'creating_station':
+            action_data.status = 'accepting_station'
+            action_data.sprites.append(core.Station(subway_sprites, *action_data.clicks[-1]))
+            action_data.objects.append(models.Station(
+                game=SESSION.session.id,
+                x=action_data.clicks[-1][0],
+                y=action_data.clicks[-1][1]
+            ))
 
     return cond
 
@@ -93,8 +96,33 @@ def create_line_fr(btn, event=None, commit=False):
     if commit:
         pass
     else:
-        if len(action_data.clicks) > 1:
-            core.Line(subway_sprites, *action_data.clicks[-2], *action_data.clicks[-1])
+        cond = False
+        if len(action_data.clicks) > 0:
+            for s in SESSION.sprites.stations:
+                if not cond:
+                    cond = s.rect.collidepoint(*action_data.clicks[-1])
+                else:
+                    break
+            if not cond:
+                action_data.clicks = action_data.clicks[:-1]
+            if len(action_data.clicks) > 1:
+                start, end = False, False
+                for s in SESSION.sprites.stations:
+                    if not start or not end:
+                        if not start and s.rect.collidepoint(*action_data.clicks[-1]):
+                            start = s.rect
+                        if not end and s.rect.collidepoint(*action_data.clicks[-2]):
+                            end = s.rect
+                    else:
+                        break
+                if start and end:
+                    action_data.sprites.append(core.Line(subway_sprites, *[i + 10 for i in [start.x, start.y, end.x, end.y]]))
+                    action_data.objects.append(models.Line(
+                        game=SESSION.session.id,
+                        x=action_data.clicks[-1][0],
+                        y=action_data.clicks[-1][1]
+                    ))
+                    core.Line(subway_sprites, *[i + 10 for i in [start.x, start.y, end.x, end.y]])
 
 
 # UI
@@ -108,7 +136,7 @@ subway_sprites = pygame.sprite.Group()
 
 
 # Sprites
-core.MapSprite(all_sprites)
+core.MapSprite(all_sprites, obj=SESSION.get_map())
 
 
 # Clock
@@ -132,6 +160,8 @@ text_render.add_text(screen, 10, 125, 15, 'building', True)
 
 build_station = core.Button(relative_rect=pygame.Rect((10, 145), (135, 30)), text='build station', manager=ui_manager, on_click=create_station_handler)
 build_line = core.Button(relative_rect=pygame.Rect((155, 145), (135, 30)), text='build line', manager=ui_manager, on_click=create_line_handler)
+
+SESSION.load_sprites(subway_sprites)
 
 
 while running:

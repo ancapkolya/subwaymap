@@ -35,15 +35,14 @@ get_length = lambda x, y, x1, y1: ((x - x1) ** 2 + (y - y1) ** 2) ** 0.5
 # Classes
 class Map:
     def __init__(self, matrix=None, centers=None):
-        if matrix and centers:
+        if matrix is not None and centers is not None:
             self.map = np.array(matrix)
             self.centers = np.array(centers)
         else:
             self.map = np.random.randint(1, 5, (150, 75))
             self.centers = np.hstack([np.random.randint(6, 9, (50)), np.random.randint(10, 20, (10))])
-
-        self.create_attractions(self.centers[0:9])
-        self.create_attractions(self.centers[10:])
+            self.create_attractions(self.centers[0:9])
+            self.create_attractions(self.centers[10:])
 
     def create_attractions(self, strength_array):
         for strength in strength_array:
