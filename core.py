@@ -23,7 +23,6 @@ class TimeMode:
 FPS = 5
 TIME_MODE = TimeMode()
 
-
 # images
 import pygame_gui
 
@@ -66,6 +65,64 @@ class OnClickMixin:
 class EmptyClass: pass
 
 
+class GameLoop:
+
+    def __init__(self, screen, clock):
+        self.screen = screen
+        self.window = None
+        self.clock = clock
+
+    def loop(self):
+        running = True
+        while running and self.window:
+            time_delta, game_delta = self.clock.tick()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                else:
+                    self.window.process_events(event)
+            self.screen.fill('white')
+            self.window.draw()
+            self.window.update(time_delta, game_delta)
+            pygame.display.flip()
+        models.connection.close()
+        pygame.quit()
+
+    def set_window(self, window):
+        if self.window:
+            self.window.screen = None
+        self.window = window
+        self.window.screen = self.screen
+
+
+class Window:
+
+    def __init__(self, ui=None, process_events_func=None, update_func=None, groups=[], auto_text_renders=[]):
+        self.screen = None
+        self.ui = ui
+        self.process_events_func = process_events_func
+        self.update_func = update_func
+        self.auto_text_renders = auto_text_renders
+        self.groups = groups
+
+    def draw(self):
+        if self.screen:
+            [group.draw(self.screen) for group in self.groups]
+            [text.render() for text in self.auto_text_renders]
+            self.ui.draw_ui(self.screen)
+
+    def process_events(self, event):
+        if self.screen and self.process_events_func:
+            self.process_events_func(self, event)
+            self.ui.process_events(event)
+
+    def update(self, time_delta, game_time):
+        if self.screen:
+            self.ui.update(time_delta)
+            if self.update_func:
+                self.update_func(self, time_delta, game_time)
+
+
 class SessionSprites:
     stations = list()
     lines = list()
@@ -73,7 +130,7 @@ class SessionSprites:
 
 class Session:
 
-    def __init__(self, group=None, pk=-1):
+    def __init__(self, pk=-1):
         self.sprites = SessionSprites()
         if pk > -1:
             session = models.GameSession.get_or_none(id=pk)
@@ -84,14 +141,12 @@ class Session:
         else:
             self.create_session()
         self.session.load_data()
-        if group:
-            self.load_sprites(group)
 
-    def load_sprites(self, group):
-        for s in self.session.stations:
-            self.sprites.stations.append(Station(group, s.x, s.y))
-        for l in self.session.lines:
-            self.sprites.lines.append(Line(group, *l.stations))
+    def load_sprites(self, stations_sprites, lines_sprites):
+        for station in self.session.stations:
+            self.sprites.stations.append(Station(stations_sprites, station))
+        for line in self.session.lines:
+            self.sprites.lines.append(Line(lines_sprites, line))
 
     def create_session(self):
         game_map = map_core.Map()
@@ -127,13 +182,13 @@ class AutoTextRender:
 
     __init__ = lambda self: self.__setattr__('lst', list())
     add_text = lambda self, *args, **kwargs: self.lst.append(lambda: create_text(*args, **kwargs))
-    add_text_stream = lambda self, *args, func, **kwargs: self.lst.append(lambda: create_text(*args, text=func(), **kwargs))
+    add_text_stream = lambda self, *args, func, **kwargs: self.lst.append(
+        lambda: create_text(*args, text=func(), **kwargs))
     render = lambda self: [func() for func in self.lst]
 
     '''def add_text_stream(self, *args, func, **kwargs):
         def wrapped_func():
             text = func()'''
-
 
 
 class WrappedClock:
@@ -167,6 +222,8 @@ class Manager(pygame_gui.UIManager):
             if event.type == pygame.USEREVENT:
                 if event.user_type == pygame_gui.UI_BUTTON_PRESSED:
                     if event.ui_element == obj:
+                        print(0)
+                        print(event)
                         obj.on_click(event)
 
     def add_to_handle(self, object, update=False):
@@ -205,7 +262,7 @@ class MessageBox(pygame.sprite.Sprite):
         self.rect = pygame.Rect(750, 300, 300, 200)
         pygame.draw.rect(self.image, pygame.Color("white"), pygame.Rect(0, 0, 300, 200), border_radius=10)
         if text:
-            create_text(self.image, 10, 50, text, 15, True)
+            create_text(self.image, 10, 50, 15, text, True)
         else:
             draw_func(self.image)
         Button(relative_rect=pygame.Rect((760, 310), (80, 30)), text='close', manager=manager, on_click=self.kill)
@@ -230,18 +287,24 @@ class MapSprite(pygame.sprite.Sprite):
 
 class Station(pygame.sprite.Sprite):
 
-    def __init__(self, group, x, y):
+    def __init__(self, group, obj):
         super().__init__(group)
+        self.obj = obj
         self.image = pygame.Surface((20, 20), pygame.SRCALPHA, 32)
-        self.rect = pygame.Rect(x - 10, y - 10, 20, 20)
+        self.rect = pygame.Rect(self.obj.x - 10, self.obj.y - 10, 20, 20)
         pygame.draw.circle(self.image, pygame.Color("white"), (10, 10), 8)
         pygame.draw.circle(self.image, pygame.Color("black"), (10, 10), 8, 2)
 
 
 class Line(pygame.sprite.Sprite):
 
-    def __init__(self, group, x, y, x1, y1):
+    def __init__(self, group, obj):
         super().__init__(group)
+        self.obj = obj
+        self.obj.load_data()
+        self.stations = [models.Station.get_by_id(id) for id in self.obj.stations]
+        self.points_lst = [self.stations[0].x, self.stations[0].y, self.stations[1].x, self.stations[1].y]
+        x, y, x1, y1 = self.points_lst
         self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(300, 0, 1500, 750)
 
