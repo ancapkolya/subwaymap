@@ -23,6 +23,7 @@ class TimeMode:
 FPS = 5
 TIME_MODE = TimeMode()
 
+
 # images
 import pygame_gui
 
@@ -91,19 +92,31 @@ class GameLoop:
     def set_window(self, window):
         if self.window:
             self.window.screen = None
+            self.window.clock = None
         self.window = window
+        self.window.init()
+        self.window.clock = self.clock
         self.window.screen = self.screen
 
 
 class Window:
 
-    def __init__(self, ui=None, process_events_func=None, update_func=None, groups=[], auto_text_renders=[]):
+    def __init__(self, ui=None, init_func=None, process_events_func=None, update_func=None, groups=[], auto_text_renders=[]):
         self.screen = None
+        self.clock = None
         self.ui = ui
         self.process_events_func = process_events_func
         self.update_func = update_func
         self.auto_text_renders = auto_text_renders
         self.groups = groups
+        if init_func:
+            self.init_func = init_func
+
+    def init(self):
+        if 'init_func' in self.__dict__:
+            self.init_func()
+            del self.init_func
+
 
     def draw(self):
         if self.screen:
@@ -122,10 +135,20 @@ class Window:
             if self.update_func:
                 self.update_func(self, time_delta, game_time)
 
+    def clear(self):
+        self.screen = None
+        self.clock = None
+        for group in self.groups:
+            for sprite in group:
+                sprite.kill()
+        for sprite in self.ui.ui_group:
+            sprite.kill()
+
 
 class SessionSprites:
     stations = list()
     lines = list()
+    routes = list()
 
 
 class Session:
@@ -142,11 +165,12 @@ class Session:
             self.create_session()
         self.session.load_data()
 
-    def load_sprites(self, stations_sprites, lines_sprites):
+    def load_sprites(self, stations_sprites, lines_sprites, routes_group):
         for station in self.session.stations:
             self.sprites.stations.append(Station(stations_sprites, station))
         for line in self.session.lines:
             self.sprites.lines.append(Line(lines_sprites, line))
+        self.update_routes_map(routes_group)
 
     def create_session(self):
         game_map = map_core.Map()
@@ -156,6 +180,13 @@ class Session:
     def get_map(self):
         return Map(matrix=self.session.map.copy(), centers=self.session.centers.copy())
 
+    def update_routes_map(self, routes_group):
+        for route in self.session.routes:
+            for line in route.lines:
+                self.sprites.routes.append(Route(routes_group, line, route))
+        for route in self.sprites.routes:
+            route.create_route()
+
 
 class ActionData(OnClickMixin):
 
@@ -164,14 +195,18 @@ class ActionData(OnClickMixin):
     sprites = []
     status = 'watching'
 
-    def clear(self, kill=False, status='watching'):
-        if 'on_click_func' in self.__dict__:
-            del self.on_click_func
-        for i in self.__dict__.copy():
-            self.__setattr__(i, None)
+    def clear(self, kill=False, use_callback=False, status='watching'):
         if kill:
             for i in self.sprites:
                 i.kill()
+        if 'on_click_func' in self.__dict__:
+            del self.on_click_func
+        if 'clear_func' in self.__dict__:
+            if use_callback:
+                self.clear_func()
+            del self.clear_func
+        for i in self.__dict__.copy():
+            self.__setattr__(i, None)
         self.clicks = []
         self.objects = []
         self.sprites = []
@@ -185,10 +220,6 @@ class AutoTextRender:
     add_text_stream = lambda self, *args, func, **kwargs: self.lst.append(
         lambda: create_text(*args, text=func(), **kwargs))
     render = lambda self: [func() for func in self.lst]
-
-    '''def add_text_stream(self, *args, func, **kwargs):
-        def wrapped_func():
-            text = func()'''
 
 
 class WrappedClock:
@@ -216,20 +247,11 @@ class Manager(pygame_gui.UIManager):
 
     def process_events(self, event: pygame.event.Event):
         super().process_events(event)
-        for i, obj in enumerate(self.objects):
-            '''if i in self.update_objects:
-                obj.update()'''
+        for i, obj in enumerate(self.ui_group):
             if event.type == pygame.USEREVENT:
                 if event.user_type == pygame_gui.UI_BUTTON_PRESSED:
                     if event.ui_element == obj:
-                        print(0)
-                        print(event)
                         obj.on_click(event)
-
-    def add_to_handle(self, object, update=False):
-        '''if update:
-            self.update_objects.append(len(self.objects))'''
-        self.objects.append(object)
 
 
 class Button(pygame_gui.elements.UIButton, OnClickMixin):
@@ -237,20 +259,11 @@ class Button(pygame_gui.elements.UIButton, OnClickMixin):
     def __init__(self, *args, **kwargs):
         self.default_name = kwargs['text']
         self.on_click_func = kwargs['on_click']
-        kwargs['manager'].add_to_handle(self)
         del kwargs['on_click']
-        '''if 'update_func' in kwargs:
-            self.update_func = kwargs['update_func']
-            del kwargs['update_func']'''
         super().__init__(*args, **kwargs)
 
     def reset_text(self):
         self.set_text(self.default_name)
-
-    '''def update(self, *args, **kwargs):
-        super().update(*args, **kwargs)
-        if 'update_func' in self.__dict__:
-            self.update_func()'''
 
 
 # sprites
@@ -273,6 +286,16 @@ class MessageBox(pygame.sprite.Sprite):
 
     def update(self, way):
         pass
+
+
+class ImageSprite(pygame.sprite.Sprite):
+
+    def __init__(self, group, name, x, y, w, h, colorkey=None):
+        super().__init__([group])
+        self.image = pygame.transform.scale(load_image(name, colorkey), (w, h))
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
 
 
 class MapSprite(pygame.sprite.Sprite):
@@ -301,10 +324,7 @@ class Line(pygame.sprite.Sprite):
     def __init__(self, group, obj):
         super().__init__(group)
         self.obj = obj
-        self.obj.load_data()
-        self.stations = [models.Station.get_by_id(id) for id in self.obj.stations]
-        self.points_lst = [self.stations[0].x, self.stations[0].y, self.stations[1].x, self.stations[1].y]
-        x, y, x1, y1 = self.points_lst
+        x, y, x1, y1 = obj.start.x, obj.start.y, obj.end.x, obj.end.y
         self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(300, 0, 1500, 750)
 
@@ -317,3 +337,42 @@ class Line(pygame.sprite.Sprite):
             b_x = x + (d_y + 5) * (x1 - x) // d_x - 300
             pygame.draw.line(self.image, 'white', (x - 300, y), (b_x, y1), 10)
             pygame.draw.line(self.image, 'white', (b_x, y1), (x1 - 300, y1), 8)
+
+
+class Route(pygame.sprite.Sprite):
+
+    def __init__(self, group, obj, route):
+        super().__init__(group)
+        self.obj = obj
+        self.route = route
+
+        self.create_route()
+
+    def create_route(self):
+        delta = 0
+        x, y, x1, y1 = self.obj.start.x, self.obj.start.y, self.obj.end.x, self.obj.end.y
+
+        line_routes = list(self.obj.routes)
+        line_routes_len = len(line_routes)
+
+        if len(line_routes) > 1:
+            route_ind = line_routes.index(self.route)
+            delta = -2 * (line_routes_len - 1) + 4 * route_ind
+
+        color = models.ROUTES_COLORS[self.route.color]
+        self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
+        self.rect = pygame.Rect(300, 0, 1500, 750)
+
+        d_x, d_y = abs(x - x1), abs(y - y1)
+        if d_y >= d_x:
+            x += delta
+            x1 += delta
+            b_y = y1 + d_x * (y - y1) // d_y
+            pygame.draw.line(self.image, color, (x - 300, y), (x - 300, b_y), 4)
+            pygame.draw.line(self.image, color, (x - 300, b_y), (x1 - 300, y1), 5)
+        else:
+            y += delta
+            y1 += delta
+            b_x = x + (d_y + 5) * (x1 - x) // d_x - 300
+            pygame.draw.line(self.image, color, (x - 300, y), (b_x, y1), 5)
+            pygame.draw.line(self.image, color, (b_x, y1), (x1 - 300, y1), 4)

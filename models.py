@@ -30,7 +30,10 @@ class JsonModel(BaseModel):
 
 # models
 class GameSession(JsonModel):
+
     score = IntegerField(default=0)
+    level = IntegerField(default=0)
+
     map = TextField()
     centers = TextField()
     datetime = DateTimeField(default=datetime.datetime(year=2000, month=1, day=1, hour=1, minute=1, second=1, microsecond=1))
@@ -40,28 +43,48 @@ class GameSession(JsonModel):
 
 
 class Station(BaseModel):
+
     game = ForeignKeyField(GameSession, backref='stations')
+
     x = IntegerField()
     y = IntegerField()
 
+    def get_lines(self):
+        return self.lines_1 + self.lines_2
 
-class Line(JsonModel):
+
+class Line(BaseModel):
+
     game = ForeignKeyField(GameSession, backref='lines')
-    stations = TextField()
 
-    class Meta:
-        json_fields = ['stations']
+    start = ForeignKeyField(Station, backref='lines_1')
+    end = ForeignKeyField(Station, backref='lines_2')
 
 
-class Route(JsonModel):
+ROUTES_COLORS = [
+    'red',
+    'green',
+    'blue',
+    'yellow',
+    'pink',
+    'purple',
+    'black',
+    'gray'
+]
+
+class Route(BaseModel):
     game = ForeignKeyField(GameSession, backref='routes')
-    stations = TextField()
-    train_n = IntegerField()
 
-    class Meta:
-        json_fields = ['stations']
+    lines = ManyToManyField(Line, backref='routes', on_delete='CASCADE')
+
+    train_n = IntegerField()
+    color = IntegerField()
+
+RouteToLine = Route.lines.get_through_model()
+
+get_route_color = lambda pk: len(GameSession.get_by_id(pk).routes) % 7
 
 
 # creating models
 if __name__ == '__main__':
-    connection.create_tables([GameSession, Line, Station, Route])
+    connection.create_tables([GameSession, Line, Station, Route, RouteToLine])
