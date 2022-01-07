@@ -91,8 +91,7 @@ class GameLoop:
 
     def set_window(self, window):
         if self.window:
-            self.window.screen = None
-            self.window.clock = None
+            self.window.clear()
         self.window = window
         self.window.init()
         self.window.clock = self.clock
@@ -115,7 +114,6 @@ class Window:
     def init(self):
         if 'init_func' in self.__dict__:
             self.init_func()
-            del self.init_func
 
 
     def draw(self):
@@ -143,6 +141,8 @@ class Window:
                 sprite.kill()
         for sprite in self.ui.ui_group:
             sprite.kill()
+        for text in self.auto_text_renders:
+            text.clear()
 
 
 class SessionSprites:
@@ -156,7 +156,7 @@ class Session:
     def __init__(self, pk=-1):
         self.sprites = SessionSprites()
         if pk > -1:
-            session = models.GameSession.get_or_none(id=pk)
+            session = models.GameSession.get_by_id(pk)
             if session:
                 self.session = session
             else:
@@ -220,6 +220,7 @@ class AutoTextRender:
     add_text_stream = lambda self, *args, func, **kwargs: self.lst.append(
         lambda: create_text(*args, text=func(), **kwargs))
     render = lambda self: [func() for func in self.lst]
+    clear = lambda self: self.__setattr__('lst', list())
 
 
 class WrappedClock:
@@ -305,6 +306,11 @@ class MapSprite(pygame.sprite.Sprite):
         self.map = Map() if obj is None else obj
         self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(300, 0, 1500, 750)
+        self.map.draw_map(self.image)
+
+    def generate_new(self):
+        self.map = Map()
+        self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
         self.map.draw_map(self.image)
 
 

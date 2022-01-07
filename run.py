@@ -1,6 +1,7 @@
 import pygame
 
 import core
+import map_core
 import models
 
 
@@ -248,6 +249,7 @@ warning_sprites = pygame.sprite.Group()
 
 # Sprites
 def init_game_window():
+
     # Main
     text_render.add_text(screen, 10, 10, 15, 'Menu', True)
 
@@ -335,7 +337,7 @@ def init_start_window():
     start_text_render.add_text(screen, 732, 280, 50, 'subwaymap', True)
 
     core.Button(relative_rect=pygame.Rect((725, 350), (195, 50)), text='load previous', manager=start_ui_manager, on_click=lambda self, event: load_game(-1))
-    core.Button(relative_rect=pygame.Rect((925, 350), (145, 50)), text='new game', manager=start_ui_manager, on_click=lambda self, event: load_game(-1))
+    core.Button(relative_rect=pygame.Rect((925, 350), (145, 50)), text='new game', manager=start_ui_manager, on_click=lambda self, event: game_loop.set_window(new_game_window))
 
     start_text_render.add_text(screen, 35, 410, 20, 'games', True)
 
@@ -347,15 +349,15 @@ def init_start_window():
             n = i * 29 + j + 1
             if n <= length:
                 core.Button(relative_rect=pygame.Rect((j * 60 + 35, 450 + i * 40), (60, 30)), text=str(n),
-                            manager=start_ui_manager, on_click=lambda self, event: load_game(n))
+                            manager=start_ui_manager, on_click=lambda self, event, n=n: load_game(n))
+            else:
+                break
 
-
-# Sprites
-core.ImageSprite(start_sprites, 'logo.png', 725, 100, 350, 167)
+    core.ImageSprite(start_sprites, 'logo.png', 725, 100, 350, 167)
 
 
 start_window = core.Window(
-    init_func=init_start_window(),
+    init_func=init_start_window,
     process_events_func=lambda *args: 0,
     auto_text_renders=[start_text_render],
     groups=[start_sprites],
@@ -363,39 +365,66 @@ start_window = core.Window(
 )
 
 
-'''# START WINDOW
+# NEW GAME WINDOW
 # Groups
-start_text_render = core.AutoTextRender()
-start_sprites = pygame.sprite.Group()
+new_game_text_render = core.AutoTextRender()
+new_game_sprites = pygame.sprite.Group()
 
 
 # UI
-start_ui_manager = core.Manager((width, height), 'data/styles.json')
+new_game_ui_manager = core.Manager((width, height), 'data/styles.json')
 
 
-def init_start_window():
-
-    def load_previous():
-        global SESSION
-        SESSION = core.Session()
-        game_loop.set_window(game_window)
-
-    start_text_render.add_text(screen, 732, 280, 50, 'subwaymap', True)
-    core.Button(relative_rect=pygame.Rect((725, 350), (195, 50)), text='загрузить последнюю', manager=start_ui_manager, on_click=lambda self, event: load_previous())
-    core.Button(relative_rect=pygame.Rect((925, 350), (145, 50)), text='начать новую', manager=start_ui_manager, on_click=lambda self, event: load_previous())
-
-
-# Sprites
-core.ImageSprite(start_sprites, 'logo.png', 725, 100, 350, 167)
+def create_and_run_game(map_obj, level):
+    global SESSION
+    session = models.GameSession(
+        map=map_obj.map.tolist(),
+        centers=map_obj.centers.tolist(),
+        level=level
+    )
+    session.save()
+    SESSION = core.Session(pk=session.id)
+    game_loop.set_window(game_window)
 
 
-start_window = core.Window(
-    init_func=init_start_window(),
+def init_new_game_window():
+    sprite = core.MapSprite(new_game_sprites)
+    sprite.level = 1
+
+    # Main
+    new_game_text_render.add_text(screen, 10, 10, 15, 'Menu', True)
+
+    core.Button(relative_rect=pygame.Rect((10, 40), (135, 30)), text='start', manager=new_game_ui_manager,
+                on_click=lambda *args: create_and_run_game(sprite.map, sprite.level))
+    core.Button(relative_rect=pygame.Rect((155, 40), (135, 30)), text='generate', manager=new_game_ui_manager,
+                on_click=lambda *args: sprite.generate_new())
+    core.Button(relative_rect=pygame.Rect((10, 80), (135, 30)), text='quit', manager=new_game_ui_manager,
+                on_click=lambda *args: game_loop.set_window(start_window))
+    core.Button(relative_rect=pygame.Rect((155, 80), (135, 30)), text='empty', manager=new_game_ui_manager,
+                on_click=lambda: print(1))
+
+    new_game_text_render.add_text(screen, 10, 125, 15, 'Level (1-3)', True)
+
+    def change_level(sprite, delta=-1):
+        if 1 <= sprite.level + delta <= 3:
+            sprite.level += delta
+
+    core.Button(relative_rect=pygame.Rect((10, 155), (135, 30)), text='-', manager=new_game_ui_manager,
+                on_click=lambda *args: change_level(sprite))
+    core.Button(relative_rect=pygame.Rect((155, 155), (135, 30)), text='+', manager=new_game_ui_manager,
+                on_click=lambda *args: change_level(sprite, 1))
+
+    new_game_text_render.add_text_stream(screen, 10, 195, 15, func=lambda: f'level: {sprite.level}', bold=True)
+
+
+
+new_game_window = core.Window(
+    init_func=init_new_game_window,
     process_events_func=lambda *args: 0,
-    auto_text_renders=[start_text_render],
-    groups=[start_sprites],
-    ui=start_ui_manager,
-)'''
+    auto_text_renders=[new_game_text_render],
+    groups=[new_game_sprites],
+    ui=new_game_ui_manager,
+)
 
 
 # GAME LOOP
