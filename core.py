@@ -20,7 +20,7 @@ class TimeMode:
     LIST = [PAUSE, SLOW, MEDIUM, FAST]
 
 
-FPS = 5
+FPS = 10
 TIME_MODE = TimeMode()
 
 
@@ -165,12 +165,14 @@ class Session:
             self.create_session()
         self.session.load_data()
 
-    def load_sprites(self, stations_sprites, lines_sprites, routes_group):
+    def load_sprites(self, stations_sprites, lines_sprites, routes_group, trains_group, clock):
         for station in self.session.stations:
             self.sprites.stations.append(Station(stations_sprites, station))
         for line in self.session.lines:
             self.sprites.lines.append(Line(lines_sprites, line))
+            Train(trains_group, line.routes[0], line, clock)
         self.update_routes_map(routes_group)
+
 
     def create_session(self):
         game_map = map_core.Map()
@@ -329,10 +331,13 @@ class Line(pygame.sprite.Sprite):
 
     def __init__(self, group, obj):
         super().__init__(group)
+
         self.obj = obj
-        x, y, x1, y1 = obj.start.x, obj.start.y, obj.end.x, obj.end.y
+
         self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(300, 0, 1500, 750)
+
+        x, y, x1, y1 = obj.start.x, obj.start.y, obj.end.x, obj.end.y
 
         d_x, d_y = abs(x - x1), abs(y - y1)
         if d_y >= d_x:
@@ -349,8 +354,13 @@ class Route(pygame.sprite.Sprite):
 
     def __init__(self, group, obj, route):
         super().__init__(group)
+
         self.obj = obj
         self.route = route
+
+        self.color = models.ROUTES_COLORS[self.route.color]
+        self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
+        self.rect = pygame.Rect(300, 0, 1500, 750)
 
         self.create_route()
 
@@ -365,20 +375,74 @@ class Route(pygame.sprite.Sprite):
             route_ind = line_routes.index(self.route)
             delta = -2 * (line_routes_len - 1) + 4 * route_ind
 
-        color = models.ROUTES_COLORS[self.route.color]
-        self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
-        self.rect = pygame.Rect(300, 0, 1500, 750)
-
         d_x, d_y = abs(x - x1), abs(y - y1)
         if d_y >= d_x:
             x += delta
             x1 += delta
             b_y = y1 + d_x * (y - y1) // d_y
-            pygame.draw.line(self.image, color, (x - 300, y), (x - 300, b_y), 4)
-            pygame.draw.line(self.image, color, (x - 300, b_y), (x1 - 300, y1), 5)
+            pygame.draw.line(self.image, self.color, (x - 300, y), (x - 300, b_y), 4)
+            pygame.draw.line(self.image, self.color, (x - 300, b_y), (x1 - 300, y1), 5)
         else:
             y += delta
             y1 += delta
             b_x = x + (d_y + 5) * (x1 - x) // d_x - 300
-            pygame.draw.line(self.image, color, (x - 300, y), (b_x, y1), 5)
-            pygame.draw.line(self.image, color, (b_x, y1), (x1 - 300, y1), 4)
+            pygame.draw.line(self.image, self.color, (x - 300, y), (b_x, y1), 5)
+            pygame.draw.line(self.image, self.color, (b_x, y1), (x1 - 300, y1), 4)
+
+
+TRAIN_SPEED_MS = 15
+ANGLE_TRAIN_SPEED_MS = 10.5
+
+
+class Train(pygame.sprite.Sprite):
+
+    def __init__(self, group, route, line, clock, direction=1):
+        super().__init__(group)
+
+        self.route = route
+        self.clock = clock
+
+        self.direction = direction
+        self.station, self.next_station = [line.start, line.end][::self.direction]
+        self.pos = (self.station.x, self.station.y)
+        self.vx, self.vy = 0, 0
+
+        self.draw()
+        self.set_speed()
+
+    def draw(self):
+        self.image = pygame.Surface((12, 12), pygame.SRCALPHA, 32)
+        self.rect = pygame.Rect(self.pos[0] - 6, self.pos[1] - 6, 12, 12)
+
+        pygame.draw.circle(self.image, pygame.Color("white"), (6, 6), 5)
+        pygame.draw.circle(self.image, pygame.Color("black"), (6, 6), 5, 1)
+
+    def set_speed(self):
+        d_x, d_y = self.next_station.x - self.station.x, self.next_station.y - self.station.y
+        pd_x, pd_y = self.next_station.x - self.pos[0], self.next_station.y - self.pos[1]
+
+        kx = (abs(d_x) / d_x)
+        ky = (abs(d_y) / d_y)
+
+        d_x, d_y, pd_x, pd_y = abs(d_x), abs(d_y), abs(pd_x), abs(pd_y)
+
+        if d_y >= d_x:
+            if pd_y > d_x:
+                self.vx, self.vy = 0, TRAIN_SPEED_MS * ky
+            else:
+                self.vx, self.vy = ANGLE_TRAIN_SPEED_MS * kx, ANGLE_TRAIN_SPEED_MS * ky
+        else:
+            if pd_x < d_y:
+                self.vx, self.vy = TRAIN_SPEED_MS * kx, 0
+            else:
+                self.vx, self.vy = ANGLE_TRAIN_SPEED_MS * kx, ANGLE_TRAIN_SPEED_MS * ky
+
+
+    def update(self, time_delta, game_time):
+        self.rect.x += self.vx * time_delta
+        self.rect.y += self.vy * time_delta
+
+
+
+
+

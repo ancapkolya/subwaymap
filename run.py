@@ -178,25 +178,20 @@ def accept_route_handler(self, event):
 
 
 def create_route_fr(btn, event=None, commit=False):
-    print(action_data.__dict__)
     if commit:
         [obj.save() for obj in action_data.objects]
         SESSION.update_routes_map(routes_group)
     else:
-        print(1)
         cond = False
         if len(action_data.clicks) > 0:
-            print(2)
             for s in SESSION.sprites.stations:
                 if not cond:
                     cond = s.rect.collidepoint(*action_data.clicks[-1])
                 else:
                     break
             if not cond:
-                print(2)
                 action_data.clicks = action_data.clicks[:-1]
             if len(action_data.clicks) > 1:
-                print(4)
                 start, end = False, False
                 for s in SESSION.sprites.stations:
                     if not start or not end:
@@ -207,14 +202,10 @@ def create_route_fr(btn, event=None, commit=False):
                     else:
                         break
                 if start and end:
-                    print(5)
                     lines = (list(models.Line.filter(start=start, end=end)) + list(models.Line.filter(start=end, end=start)))
                     if lines:
-                        print(6)
                         line = lines[0]
-                        print(len(action_data.objects))
                         if len(action_data.objects) == 0:
-                            print(7)
                             action_data.objects.append(models.Route(
                                 game=SESSION.session.id,
                                 train_n=0,
@@ -244,6 +235,7 @@ all_sprites = pygame.sprite.Group()
 stations_sprites = pygame.sprite.Group()
 lines_sprites = pygame.sprite.Group()
 routes_group = pygame.sprite.Group()
+trains_group = pygame.sprite.Group()
 warning_sprites = pygame.sprite.Group()
 
 
@@ -296,7 +288,9 @@ def init_game_window():
     SESSION.load_sprites(
         stations_sprites=stations_sprites,
         lines_sprites=lines_sprites,
-        routes_group=routes_group
+        routes_group=routes_group,
+        trains_group=trains_group,
+        clock=clock
     )
 
 
@@ -308,11 +302,15 @@ def game_window_process_events(self, event):
                 action_data.clicks.append(event.pos)
         action_data.on_click(event)
 
+def game_window_update(self, *args, **kwargs):
+    self.groups[4].update(*args)
+
 game_window = core.Window(
     init_func=init_game_window,
     process_events_func=game_window_process_events,
+    update_func=game_window_update,
     auto_text_renders=[text_render],
-    groups=[all_sprites, lines_sprites, routes_group, stations_sprites, warning_sprites],
+    groups=[all_sprites, lines_sprites, routes_group, stations_sprites, trains_group, warning_sprites],
     ui=game_ui_manager,
 )
 
