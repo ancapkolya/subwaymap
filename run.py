@@ -112,6 +112,7 @@ def create_line_fr(btn, event=None, commit=False):
     if commit:
         [obj.save() for obj in action_data.objects]
         SESSION.sprites.lines.extend(action_data.sprites)
+        SESSION.update_lines_map(lines_sprites)
     else:
         cond = False
         if len(action_data.clicks) > 0:
@@ -133,20 +134,22 @@ def create_line_fr(btn, event=None, commit=False):
                     else:
                         break
                 if start and end:
+                    for l in SESSION.session.lines:
+                        if {l.start.id, l.end.id} == {start, end}:
+                            action_data.clicks = action_data.clicks[:-1]
+                            return
                     action_data.objects.append(models.Line(
                         game=SESSION.session.id,
                         start=start,
                         end=end
                     ))
-                    action_data.sprites.append(core.Line(lines_sprites, action_data.objects[-1]))
+                    action_data.sprites.append(core.Line(lines_sprites, break_points_group, action_data.objects[-1]))
                     action_data.clicks = action_data.clicks[-1:]
 
 
 # creating lines
 def create_route_handler(self, event):
     action_data.clear(True, True)
-
-    print(action_data.__dict__)
 
     action_data.on_click_func = create_route_fr
     action_data.status = 'creating_route'
@@ -180,6 +183,7 @@ def accept_route_handler(self, event):
 def create_route_fr(btn, event=None, commit=False):
     if commit:
         [obj.save() for obj in action_data.objects]
+        SESSION.sprites.routes.extend(action_data.sprites)
         SESSION.update_routes_map(routes_group)
     else:
         cond = False
@@ -236,6 +240,7 @@ stations_sprites = pygame.sprite.Group()
 lines_sprites = pygame.sprite.Group()
 routes_group = pygame.sprite.Group()
 trains_group = pygame.sprite.Group()
+break_points_group = pygame.sprite.Group()
 warning_sprites = pygame.sprite.Group()
 
 
@@ -290,6 +295,7 @@ def init_game_window():
         lines_sprites=lines_sprites,
         routes_group=routes_group,
         trains_group=trains_group,
+        break_points_group=break_points_group,
         clock=clock
     )
 
@@ -310,7 +316,7 @@ game_window = core.Window(
     process_events_func=game_window_process_events,
     update_func=game_window_update,
     auto_text_renders=[text_render],
-    groups=[all_sprites, lines_sprites, routes_group, stations_sprites, trains_group, warning_sprites],
+    groups=[all_sprites, lines_sprites, routes_group, stations_sprites, trains_group, warning_sprites, break_points_group],
     ui=game_ui_manager,
 )
 

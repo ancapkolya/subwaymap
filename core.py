@@ -149,12 +149,14 @@ class SessionSprites:
     stations = list()
     lines = list()
     routes = list()
+    breakpoints = dict()
 
 
 class Session:
 
+    sprites = SessionSprites()
+
     def __init__(self, pk=-1):
-        self.sprites = SessionSprites()
         if pk > -1:
             session = models.GameSession.get_by_id(pk)
             if session:
@@ -165,12 +167,12 @@ class Session:
             self.create_session()
         self.session.load_data()
 
-    def load_sprites(self, stations_sprites, lines_sprites, routes_group, trains_group, clock):
+    def load_sprites(self, stations_sprites, lines_sprites, routes_group, trains_group, break_points_group, clock):
+        self.break_points_group = break_points_group
+        self.update_lines_map(lines_sprites)
+        print(self.sprites.breakpoints)
         for station in self.session.stations:
-            self.sprites.stations.append(Station(stations_sprites, station))
-        for line in self.session.lines:
-            self.sprites.lines.append(Line(lines_sprites, line))
-            Train(trains_group, line.routes[0], line, clock)
+            self.sprites.stations.append(Station(stations_sprites, self, station))
         self.update_routes_map(routes_group)
 
 
@@ -182,12 +184,24 @@ class Session:
     def get_map(self):
         return Map(matrix=self.session.map.copy(), centers=self.session.centers.copy())
 
+    def update_lines_map(self, lines_group):
+        self.kill_array(self.sprites.breakpoints.values())
+        self.sprites.lines, self.sprites.breakpoints = self.kill_array(self.sprites.lines), dict()
+        for line in self.session.lines:
+            sprite = Line(lines_group, self.break_points_group, line)
+            self.sprites.lines.append(sprite)
+            self.sprites.breakpoints[line.id] = sprite.breakpoint
+            sprite.create_line()
+
     def update_routes_map(self, routes_group):
+        self.sprites.routes = self.kill_array(self.sprites.routes)
         for route in self.session.routes:
             for line in route.lines:
-                self.sprites.routes.append(Route(routes_group, line, route))
-        for route in self.sprites.routes:
-            route.create_route()
+                sprite = Route(routes_group, line, route)
+                self.sprites.routes.append(sprite)
+                sprite.create_route()
+
+    kill_array = lambda self, array: ['empty' for obj in array if obj.kill() and False]
 
 
 class ActionData(OnClickMixin):
@@ -316,39 +330,81 @@ class MapSprite(pygame.sprite.Sprite):
         self.map.draw_map(self.image)
 
 
+TRAIN_SPEED_MS = 15
+ANGLE_TRAIN_SPEED_MS = 10.5
+
+bigger_0 = lambda x: 1 if x >= 0 else -1
+
+
+def count_speed(x, y, x1, y1):
+    d_x, d_y = x1 - x, y1 - y
+
+    if d_x == 0:
+        return (0, TRAIN_SPEED_MS * bigger_0(d_y))
+    elif d_y == 0:
+        return (TRAIN_SPEED_MS * bigger_0(d_x), 0)
+    else:
+        return (ANGLE_TRAIN_SPEED_MS * bigger_0(d_x), ANGLE_TRAIN_SPEED_MS * bigger_0(d_y))
+
+
+class BreakPoint(pygame.sprite.Sprite):
+
+    def __init__(self, group, pos, s1, s2):
+        super().__init__(group)
+        self.image = pygame.Surface((4, 4), pygame.SRCALPHA, 32)
+        self.rect = pygame.Rect(pos[0] - 2, pos[1] - 2, 4, 4)
+        self.directions = {s.id:count_speed(self.rect.x + 2, self.rect.y + 2, s.x, s.y) for s in [s1, s2]}
+
+
 class Station(pygame.sprite.Sprite):
 
-    def __init__(self, group, obj):
+    def __init__(self, group, session, obj):
         super().__init__(group)
         self.obj = obj
+        self.session = session
+
         self.image = pygame.Surface((20, 20), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(self.obj.x - 10, self.obj.y - 10, 20, 20)
         pygame.draw.circle(self.image, pygame.Color("white"), (10, 10), 8)
         pygame.draw.circle(self.image, pygame.Color("black"), (10, 10), 8, 2)
 
+        self.update_routes()
+
+    def update_routes(self):
+        self.directions = dict()
+        for i, group in enumerate([[l for l in self.obj.lines_1], [l for l in self.obj.lines_2]]):
+            for line in group:
+                bp = self.session.sprites.breakpoints[line.id]
+                self.directions[line.end.id if i == 0 else line.start.id] = count_speed(self.rect.x + 10, self.rect.y + 10, bp.rect.x + 2, bp.rect.y + 2)
+
 
 class Line(pygame.sprite.Sprite):
 
-    def __init__(self, group, obj):
+    def __init__(self, group, break_points_group, obj):
         super().__init__(group)
 
         self.obj = obj
+        self.break_points_group = break_points_group
 
         self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(300, 0, 1500, 750)
 
-        x, y, x1, y1 = obj.start.x, obj.start.y, obj.end.x, obj.end.y
+        self.create_line()
+
+    def create_line(self):
+        x, y, x1, y1 = self.obj.start.x, self.obj.start.y, self.obj.end.x, self.obj.end.y
 
         d_x, d_y = abs(x - x1), abs(y - y1)
         if d_y >= d_x:
             b_y = y1 + d_x * (y - y1) // d_y
             pygame.draw.line(self.image, 'white', (x - 300, y), (x - 300, b_y), 8)
             pygame.draw.line(self.image, 'white', (x - 300, b_y), (x1 - 300, y1), 10)
+            self.breakpoint = BreakPoint(self.break_points_group, (x - 300, b_y), self.obj.start, self.obj.end)
         else:
             b_x = x + (d_y + 5) * (x1 - x) // d_x - 300
             pygame.draw.line(self.image, 'white', (x - 300, y), (b_x, y1), 10)
             pygame.draw.line(self.image, 'white', (b_x, y1), (x1 - 300, y1), 8)
-
+            self.breakpoint = BreakPoint(self.break_points_group, (b_x, y1), self.obj.start, self.obj.end)
 
 class Route(pygame.sprite.Sprite):
 
@@ -390,17 +446,14 @@ class Route(pygame.sprite.Sprite):
             pygame.draw.line(self.image, self.color, (b_x, y1), (x1 - 300, y1), 4)
 
 
-TRAIN_SPEED_MS = 15
-ANGLE_TRAIN_SPEED_MS = 10.5
-
-
 class Train(pygame.sprite.Sprite):
 
-    def __init__(self, group, route, line, clock, direction=1):
+    def __init__(self, group, route, line, clock, break_points_group, direction=1):
         super().__init__(group)
 
         self.route = route
         self.clock = clock
+        self.break_points_group = break_points_group
 
         self.direction = direction
         self.station, self.next_station = [line.start, line.end][::self.direction]
@@ -408,7 +461,7 @@ class Train(pygame.sprite.Sprite):
         self.vx, self.vy = 0, 0
 
         self.draw()
-        self.set_speed()
+        #self.set_speed()
 
     def draw(self):
         self.image = pygame.Surface((12, 12), pygame.SRCALPHA, 32)
@@ -417,30 +470,14 @@ class Train(pygame.sprite.Sprite):
         pygame.draw.circle(self.image, pygame.Color("white"), (6, 6), 5)
         pygame.draw.circle(self.image, pygame.Color("black"), (6, 6), 5, 1)
 
-    def set_speed(self):
-        d_x, d_y = self.next_station.x - self.station.x, self.next_station.y - self.station.y
-        pd_x, pd_y = self.next_station.x - self.pos[0], self.next_station.y - self.pos[1]
-
-        kx = (abs(d_x) / d_x)
-        ky = (abs(d_y) / d_y)
-
-        d_x, d_y, pd_x, pd_y = abs(d_x), abs(d_y), abs(pd_x), abs(pd_y)
-
-        if d_y >= d_x:
-            if pd_y > d_x:
-                self.vx, self.vy = 0, TRAIN_SPEED_MS * ky
-            else:
-                self.vx, self.vy = ANGLE_TRAIN_SPEED_MS * kx, ANGLE_TRAIN_SPEED_MS * ky
-        else:
-            if pd_x < d_y:
-                self.vx, self.vy = TRAIN_SPEED_MS * kx, 0
-            else:
-                self.vx, self.vy = ANGLE_TRAIN_SPEED_MS * kx, ANGLE_TRAIN_SPEED_MS * ky
-
 
     def update(self, time_delta, game_time):
         self.rect.x += self.vx * time_delta
         self.rect.y += self.vy * time_delta
+
+        if pygame.sprite.spritecollideany(self, self.break_points_group):
+            pass
+
 
 
 
