@@ -72,19 +72,26 @@ ROUTES_COLORS = [
     'gray'
 ]
 
-class Route(BaseModel):
+class Route(JsonModel):
     game = ForeignKeyField(GameSession, backref='routes')
 
-    lines = ManyToManyField(Line, backref='routes', on_delete='CASCADE')
+    lines_queue = TextField(default=[])
 
     train_n = IntegerField()
     color = IntegerField()
 
-RouteToLine = Route.lines.get_through_model()
+    class Meta:
+        json_fields = ['map', 'centers']
+
+    # не использую peewee.ManyToMany потому что оно не учитывает последовательнсоть линий
+    @property
+    def lines(self):
+        return [Line.get_by_id(id) for id in self.lines_queue]
+
 
 get_route_color = lambda pk: len(GameSession.get_by_id(pk).routes) % 7
 
 
 # creating models
 if __name__ == '__main__':
-    connection.create_tables([GameSession, Line, Station, Route, RouteToLine])
+    connection.create_tables([GameSession, Line, Station, Route])

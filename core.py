@@ -2,6 +2,7 @@ import datetime
 import os
 import sys
 import pygame
+import pygame_gui
 
 import map_core
 import models
@@ -25,9 +26,6 @@ TIME_MODE = TimeMode()
 
 
 # images
-import pygame_gui
-
-
 def load_image(name, colorkey=None):
     fullname = os.path.join('data', name)
     if not os.path.isfile(fullname):
@@ -155,6 +153,7 @@ class SessionSprites:
 class Session:
 
     sprites = SessionSprites()
+    routes = dict()
 
     def __init__(self, pk=-1):
         if pk > -1:
@@ -169,11 +168,13 @@ class Session:
 
     def load_sprites(self, stations_sprites, lines_sprites, routes_group, trains_group, break_points_group, clock):
         self.break_points_group = break_points_group
-        self.update_lines_map(lines_sprites)
-        print(self.sprites.breakpoints)
-        for station in self.session.stations:
-            self.sprites.stations.append(Station(stations_sprites, self, station))
-        self.update_routes_map(routes_group)
+        self.stations_sprites = stations_sprites
+        self.lines_sprites = lines_sprites
+        self.routes_group = routes_group
+        self.trains_group = trains_group
+        self.clock = clock
+
+        self.update_map()
 
 
     def create_session(self):
@@ -184,22 +185,51 @@ class Session:
     def get_map(self):
         return Map(matrix=self.session.map.copy(), centers=self.session.centers.copy())
 
-    def update_lines_map(self, lines_group):
+    def update_map(self):
+        self.update_lines_map(self.lines_sprites)
+        self.update_stations_map(self.stations_sprites)
+        self.update_routes_map(self.routes_group)
+
+    def update_lines_map(self):
         self.kill_array(self.sprites.breakpoints.values())
         self.sprites.lines, self.sprites.breakpoints = self.kill_array(self.sprites.lines), dict()
         for line in self.session.lines:
-            sprite = Line(lines_group, self.break_points_group, line)
+            sprite = Line(self.lines_group, self.break_points_group, line)
             self.sprites.lines.append(sprite)
             self.sprites.breakpoints[line.id] = sprite.breakpoint
             sprite.create_line()
 
-    def update_routes_map(self, routes_group):
-        self.sprites.routes = self.kill_array(self.sprites.routes)
+    def update_routes_map(self):
+        self.sprites.routes, self.routes = self.kill_array(self.sprites.routes), dict()
         for route in self.session.routes:
+            self.routes[route.id] = list()
+            stations = list()
             for line in route.lines:
-                sprite = Route(routes_group, line, route)
+                sprite = Route(self.routes_group, line, route)
                 self.sprites.routes.append(sprite)
                 sprite.create_route()
+                stations.append([line.start.id, line.end.id])
+            if len(stations) > 1:
+                for i, s in enumerate(stations[:-1]):
+                    for j in range(2):
+                        if stations[i][j] in stations[i + 1]:
+                            res = [stations[i].pop(j)]
+                            self.routes[route.id].extend([stations[i][0]] + res)
+                            break
+                for j in range(2):
+                    if stations[-1][j] == self.routes[route.id][-1]:
+                        self.routes[route.id].append(stations[-1][0])
+                        break
+            else:
+                self.routes[route.id] = stations
+            print(self.routes)
+
+    def update_stations_map(self, stations_sprites):
+        self.sprites.stations = self.kill_array(self.sprites.stations)
+        for station in self.session.stations:
+            sprite = Station(stations_sprites, self, station)
+            self.sprites.stations.append(sprite)
+            sprite.update_routes()
 
     kill_array = lambda self, array: ['empty' for obj in array if obj.kill() and False]
 
@@ -448,12 +478,12 @@ class Route(pygame.sprite.Sprite):
 
 class Train(pygame.sprite.Sprite):
 
-    def __init__(self, group, route, line, clock, break_points_group, direction=1):
+    def __init__(self, group, route, line, clock, session, direction=1):
         super().__init__(group)
 
         self.route = route
         self.clock = clock
-        self.break_points_group = break_points_group
+        self.break_points_group = session.break_points_group
 
         self.direction = direction
         self.station, self.next_station = [line.start, line.end][::self.direction]
@@ -461,7 +491,6 @@ class Train(pygame.sprite.Sprite):
         self.vx, self.vy = 0, 0
 
         self.draw()
-        #self.set_speed()
 
     def draw(self):
         self.image = pygame.Surface((12, 12), pygame.SRCALPHA, 32)

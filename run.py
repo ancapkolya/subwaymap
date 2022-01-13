@@ -72,7 +72,7 @@ def create_station(btn, event=None, commit=False):
                 x=action_data.clicks[-1][0],
                 y=action_data.clicks[-1][1]
             )
-            action_data.sprites.append(core.Station(stations_sprites, station))
+            action_data.sprites.append(core.Station(stations_sprites, SESSION, station))
             action_data.objects.append(station)
 
     return cond
@@ -112,12 +112,13 @@ def create_line_fr(btn, event=None, commit=False):
     if commit:
         [obj.save() for obj in action_data.objects]
         SESSION.sprites.lines.extend(action_data.sprites)
-        SESSION.update_lines_map(lines_sprites)
+        SESSION.update_map()
     else:
         cond = False
         if len(action_data.clicks) > 0:
             for s in SESSION.sprites.stations:
                 if not cond:
+                    print(s)
                     cond = s.rect.collidepoint(*action_data.clicks[-1])
                 else:
                     break
@@ -216,7 +217,7 @@ def create_route_fr(btn, event=None, commit=False):
                                 color=models.get_route_color(SESSION.session.id)
                             ))
                         action_data.objects[-1].save()
-                        action_data.objects[-1].lines.add(line)
+                        action_data.objects[-1].lines_queue.append(line.id)
                         action_data.sprites.append(
                             core.Route(
                                 lines_sprites,
