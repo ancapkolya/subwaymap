@@ -185,7 +185,7 @@ def create_route_fr(btn, event=None, commit=False):
     if commit:
         [obj.save() for obj in action_data.objects]
         SESSION.sprites.routes.extend(action_data.sprites)
-        SESSION.update_routes_map(routes_group)
+        SESSION.update_routes_map()
     else:
         cond = False
         if len(action_data.clicks) > 0:
@@ -216,8 +216,10 @@ def create_route_fr(btn, event=None, commit=False):
                                 train_n=0,
                                 color=models.get_route_color(SESSION.session.id)
                             ))
-                        action_data.objects[-1].save()
+                        action_data.objects[-1].load_data()
                         action_data.objects[-1].lines_queue.append(line.id)
+                        action_data.objects[-1].save()
+                        action_data.objects[-1].load_data()
                         action_data.sprites.append(
                             core.Route(
                                 lines_sprites,
@@ -225,7 +227,7 @@ def create_route_fr(btn, event=None, commit=False):
                                 action_data.objects[-1])
                         )
                         action_data.sprites[-1].create_route()
-                        SESSION.update_routes_map(routes_group)
+                        SESSION.update_routes_map()
                         action_data.clicks = action_data.clicks[-1:]
 
 
@@ -236,6 +238,8 @@ game_ui_manager = core.Manager((width, height), 'data/styles.json')
 
 # Groups
 text_render = core.AutoTextRender()
+routes_paginator_text_render = core.AutoTextRender()
+
 all_sprites = pygame.sprite.Group()
 stations_sprites = pygame.sprite.Group()
 lines_sprites = pygame.sprite.Group()
@@ -291,12 +295,33 @@ def init_game_window():
     core.Button(relative_rect=pygame.Rect((155, 325), (135, 30)), text='empty', manager=game_ui_manager,
                 on_click=create_line_handler)
 
+    def route_draw_func(self, obj, i):
+        d = i * 40
+        self.auto_text_render.add_text(self.screen, self.x+45, self.y+65+d, 15, str(i + 1), True)
+        self.add_draw_func(pygame.draw.rect, self.screen, models.ROUTES_COLORS[obj.color], (self.x+15, self.y+65+d, 20, 20), border_radius=3)
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+65, self.y+65+d), (20, 20)), text='-', manager=self.ui_manager, on_click=lambda *args: 0))
+        self.auto_text_render.add_text_stream(self.screen, self.x+90, self.y+65+d, 15, func=lambda: 1, bold=True)
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+115, self.y+65+d), (20, 20)), text='+', manager=self.ui_manager, on_click=lambda *args: 0))
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+155, self.y+65+d), (60, 20)), text='stats', manager=self.ui_manager, on_click=lambda *args: 0))
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+225, self.y+65+d), (60, 20)), text='del', manager=self.ui_manager, on_click=lambda *args: 0))
+
+    routes_list = core.RoutesPaginator(
+        screen,
+        ui_manager=game_ui_manager,
+        auto_text_render=routes_paginator_text_render,
+        x=0, y=375,
+        get_objects_func=lambda: list(models.Route.filter(game=SESSION.session.id)),
+        draw_func=route_draw_func
+    )
+
     SESSION.load_sprites(
-        stations_sprites=stations_sprites,
-        lines_sprites=lines_sprites,
+        stations_group=stations_sprites,
+        lines_group=lines_sprites,
         routes_group=routes_group,
         trains_group=trains_group,
         break_points_group=break_points_group,
+        routes_list_update_callback=routes_list.update_callback,
+        draw_objects_array=[routes_list],
         clock=clock
     )
 
@@ -310,13 +335,14 @@ def game_window_process_events(self, event):
         action_data.on_click(event)
 
 def game_window_update(self, *args, **kwargs):
+    SESSION.draw_objects()
     self.groups[4].update(*args)
 
 game_window = core.Window(
     init_func=init_game_window,
     process_events_func=game_window_process_events,
     update_func=game_window_update,
-    auto_text_renders=[text_render],
+    auto_text_renders=[text_render, routes_paginator_text_render],
     groups=[all_sprites, lines_sprites, routes_group, stations_sprites, trains_group, warning_sprites, break_points_group],
     ui=game_ui_manager,
 )

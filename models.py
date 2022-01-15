@@ -22,7 +22,8 @@ class JsonModel(BaseModel):
 
     def load_data(self):
         for field in self._meta.json_fields:
-            self.__data__[field] = json.loads(self.__data__[field])
+            if self.__data__[field].__class__.__name__ == 'str':
+                self.__data__[field] = json.loads(self.__data__[field])
 
     class Meta:
         json_fields = []
@@ -60,6 +61,15 @@ class Line(BaseModel):
     start = ForeignKeyField(Station, backref='lines_1')
     end = ForeignKeyField(Station, backref='lines_2')
 
+    @property
+    def routes(self):
+        res = []
+        for route in Route.select():
+            route.load_data()
+            if self.id in route.lines_queue:
+                res.append(route)
+        return res
+
 
 ROUTES_COLORS = [
     'red',
@@ -75,13 +85,13 @@ ROUTES_COLORS = [
 class Route(JsonModel):
     game = ForeignKeyField(GameSession, backref='routes')
 
-    lines_queue = TextField(default=[])
+    lines_queue = TextField(default='[]')
 
     train_n = IntegerField()
     color = IntegerField()
 
     class Meta:
-        json_fields = ['map', 'centers']
+        json_fields = ['lines_queue']
 
     # не использую peewee.ManyToMany потому что оно не учитывает последовательнсоть линий
     @property

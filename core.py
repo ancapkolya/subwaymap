@@ -166,12 +166,14 @@ class Session:
             self.create_session()
         self.session.load_data()
 
-    def load_sprites(self, stations_sprites, lines_sprites, routes_group, trains_group, break_points_group, clock):
+    def load_sprites(self, stations_group, lines_group, routes_group, trains_group, break_points_group, routes_list_update_callback, draw_objects_array, clock):
         self.break_points_group = break_points_group
-        self.stations_sprites = stations_sprites
-        self.lines_sprites = lines_sprites
+        self.stations_group = stations_group
+        self.lines_group = lines_group
         self.routes_group = routes_group
         self.trains_group = trains_group
+        self.routes_list_update_callback = routes_list_update_callback
+        self.draw_objects_array = draw_objects_array
         self.clock = clock
 
         self.update_map()
@@ -186,9 +188,9 @@ class Session:
         return Map(matrix=self.session.map.copy(), centers=self.session.centers.copy())
 
     def update_map(self):
-        self.update_lines_map(self.lines_sprites)
-        self.update_stations_map(self.stations_sprites)
-        self.update_routes_map(self.routes_group)
+        self.update_lines_map()
+        self.update_stations_map()
+        self.update_routes_map()
 
     def update_lines_map(self):
         self.kill_array(self.sprites.breakpoints.values())
@@ -204,6 +206,7 @@ class Session:
         for route in self.session.routes:
             self.routes[route.id] = list()
             stations = list()
+            route.load_data()
             for line in route.lines:
                 sprite = Route(self.routes_group, line, route)
                 self.sprites.routes.append(sprite)
@@ -222,14 +225,16 @@ class Session:
                         break
             else:
                 self.routes[route.id] = stations
-            print(self.routes)
+        self.routes_list_update_callback()
 
-    def update_stations_map(self, stations_sprites):
+    def update_stations_map(self):
         self.sprites.stations = self.kill_array(self.sprites.stations)
         for station in self.session.stations:
-            sprite = Station(stations_sprites, self, station)
+            sprite = Station(self.stations_group, self, station)
             self.sprites.stations.append(sprite)
             sprite.update_routes()
+
+    draw_objects = lambda self: [obj.draw() for obj in self.draw_objects_array]
 
     kill_array = lambda self, array: ['empty' for obj in array if obj.kill() and False]
 
@@ -359,6 +364,73 @@ class MapSprite(pygame.sprite.Sprite):
         self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
         self.map.draw_map(self.image)
 
+
+class RoutesPaginator():
+
+    def __init__(self, screen, ui_manager, auto_text_render, x, y, get_objects_func, draw_func):
+        self.screen = screen
+        self.ui_manager = ui_manager
+        self.x, self.y = x, y
+
+        self.draw_func = draw_func
+        self.get_objects_func = get_objects_func
+
+        self.auto_text_render = auto_text_render
+        self.draw_array = list()
+        self.ui_elements = list()
+
+        self.page = 1
+        self.max_page = 1
+        self.update_max_page()
+
+        Button(relative_rect=pygame.Rect((x+10, y+10), (120, 30)), text='вверх', manager=ui_manager,
+                    on_click=lambda *args: self.change_page(-1))
+        Button(relative_rect=pygame.Rect((x+170, y+10), (120, 30)), text='вниз', manager=ui_manager,
+                    on_click=lambda *args: self.change_page())
+        auto_text_render.add_text_stream(self.screen, x+140, y+15, 15, func=self.get_text_stream_data, bold=True)
+
+        self.update_data()
+
+    # data
+    @property
+    def objects(self):
+        return self.get_objects_func()
+
+    def update_max_page(self):
+        n = len(self.objects) / 5
+        self.max_page = int(n) if n == int(n) else int(n) + 1
+
+    get_str_page = lambda self: f'{self.page}/{self.max_page}'
+    get_text_stream_data = lambda self: self.get_str_page()
+
+    # update
+    def update_callback(self):
+        self.update_max_page()
+        self.check_page_n()
+        self.update_data()
+
+    def check_page_n(self):
+        self.page = self.max_page if self.page > self.max_page else self.page
+
+    def update_data(self):
+        self.auto_text_render.lst = self.auto_text_render.lst[:1]
+        self.draw_array.clear()
+        self.ui_elements = Session.kill_array(0, self.ui_elements)
+        for i, obj in enumerate(self.objects[5*(self.page-1):5*self.page]):
+            self.draw_func(self, obj, i)
+
+    def add_draw_func(self, func, *args, **kwargs):
+        self.draw_array.append(lambda: func(*args, **kwargs))
+
+    def change_page(self, change=1):
+        self.update_max_page()
+        self.check_page_n()
+        if 0 < self.page + change <= self.max_page:
+            self.page += change
+            self.update_data()
+
+    add_ui = lambda self, obj: self.ui_elements.append(obj)
+    draw = lambda self: [func() for func in self.draw_array]
 
 TRAIN_SPEED_MS = 15
 ANGLE_TRAIN_SPEED_MS = 10.5
