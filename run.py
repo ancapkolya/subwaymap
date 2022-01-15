@@ -219,7 +219,6 @@ def create_route_fr(btn, event=None, commit=False):
                         action_data.objects[-1].load_data()
                         action_data.objects[-1].lines_queue.append(line.id)
                         action_data.objects[-1].save()
-                        action_data.objects[-1].load_data()
                         action_data.sprites.append(
                             core.Route(
                                 lines_sprites,
@@ -296,14 +295,21 @@ def init_game_window():
                 on_click=create_line_handler)
 
     def route_draw_func(self, obj, i):
+        obj.load_data()
+        obj.max_n = len(obj.lines_queue) + 1
         d = i * 40
         self.auto_text_render.add_text(self.screen, self.x+45, self.y+65+d, 15, str(i + 1), True)
         self.add_draw_func(pygame.draw.rect, self.screen, models.ROUTES_COLORS[obj.color], (self.x+15, self.y+65+d, 20, 20), border_radius=3)
-        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+65, self.y+65+d), (20, 20)), text='-', manager=self.ui_manager, on_click=lambda *args: 0))
-        self.auto_text_render.add_text_stream(self.screen, self.x+90, self.y+65+d, 15, func=lambda: 1, bold=True)
-        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+115, self.y+65+d), (20, 20)), text='+', manager=self.ui_manager, on_click=lambda *args: 0))
-        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+155, self.y+65+d), (60, 20)), text='stats', manager=self.ui_manager, on_click=lambda *args: 0))
-        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+225, self.y+65+d), (60, 20)), text='del', manager=self.ui_manager, on_click=lambda *args: 0))
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+65, self.y+65+d), (20, 20)), text='-', manager=self.ui_manager, on_click=lambda *args: change_train_n(obj, -1)))
+        self.auto_text_render.add_text_stream(self.screen, self.x+90, self.y+65+d, 15, func=lambda: f'{obj.train_n}/{obj.max_n}', bold=True)
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+125, self.y+65+d), (20, 20)), text='+', manager=self.ui_manager, on_click=lambda *args: change_train_n(obj, +1)))
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+160, self.y+65+d), (55, 20)), text='stats', manager=self.ui_manager, on_click=lambda *args: 0))
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+225, self.y+65+d), (55, 20)), text='del', manager=self.ui_manager, on_click=lambda *args: 0))
+
+        def change_train_n(obj, c):
+            if 0 <= obj.train_n + c <= obj.max_n:
+                obj.train_n += c
+                obj.save()
 
     routes_list = core.RoutesPaginator(
         screen,

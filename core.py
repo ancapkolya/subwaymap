@@ -515,6 +515,7 @@ class Route(pygame.sprite.Sprite):
 
         self.obj = obj
         self.route = route
+        print(route.lines_queue, route.lines_queue.__class__)
 
         self.color = models.ROUTES_COLORS[self.route.color]
         self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
@@ -526,6 +527,8 @@ class Route(pygame.sprite.Sprite):
         delta = 0
         x, y, x1, y1 = self.obj.start.x, self.obj.start.y, self.obj.end.x, self.obj.end.y
 
+        print(self.route.lines_queue, self.route.lines_queue.__class__)
+        print(models.Route.get_by_id(self.route.id))
         line_routes = list(self.obj.routes)
         line_routes_len = len(line_routes)
 

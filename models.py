@@ -16,14 +16,18 @@ class BaseModel(Model):
 class JsonModel(BaseModel):
 
     def save(self, *args, **kwargs):
-        for field in self._meta.json_fields:
-            self.__data__[field] = json.dumps(self.__data__[field])
+        self.dump_data()
         super().save(*args, **kwargs)
 
     def load_data(self):
         for field in self._meta.json_fields:
             if self.__data__[field].__class__.__name__ == 'str':
                 self.__data__[field] = json.loads(self.__data__[field])
+
+    def dump_data(self):
+        for field in self._meta.json_fields:
+            if self.__data__[field].__class__.__name__ != 'str':
+                self.__data__[field] = json.dumps(self.__data__[field])
 
     class Meta:
         json_fields = []
@@ -65,7 +69,9 @@ class Line(BaseModel):
     def routes(self):
         res = []
         for route in Route.select():
+            print(route.lines_queue)
             route.load_data()
+            print(route.lines_queue)
             if self.id in route.lines_queue:
                 res.append(route)
         return res
@@ -96,7 +102,11 @@ class Route(JsonModel):
     # не использую peewee.ManyToMany потому что оно не учитывает последовательнсоть линий
     @property
     def lines(self):
-        return [Line.get_by_id(id) for id in self.lines_queue]
+        if self.lines_queue.__class__.__name__ == 'str':
+            self.lines_queue = json.loads(self.lines_queue)
+        res = [Line.get_by_id(id) for id in self.lines_queue]
+        self.lines_queue = json.dumps(self.lines_queue)
+        return res
 
 
 get_route_color = lambda pk: len(GameSession.get_by_id(pk).routes) % 7
