@@ -69,9 +69,7 @@ class Line(BaseModel):
     def routes(self):
         res = []
         for route in Route.select():
-            print(route.lines_queue)
             route.load_data()
-            print(route.lines_queue)
             if self.id in route.lines_queue:
                 res.append(route)
         return res
@@ -87,6 +85,7 @@ ROUTES_COLORS = [
     'black',
     'gray'
 ]
+
 
 class Route(JsonModel):
     game = ForeignKeyField(GameSession, backref='routes')

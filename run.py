@@ -304,12 +304,18 @@ def init_game_window():
         self.auto_text_render.add_text_stream(self.screen, self.x+90, self.y+65+d, 15, func=lambda: f'{obj.train_n}/{obj.max_n}', bold=True)
         self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+125, self.y+65+d), (20, 20)), text='+', manager=self.ui_manager, on_click=lambda *args: change_train_n(obj, +1)))
         self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+160, self.y+65+d), (55, 20)), text='stats', manager=self.ui_manager, on_click=lambda *args: 0))
-        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+225, self.y+65+d), (55, 20)), text='del', manager=self.ui_manager, on_click=lambda *args: 0))
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+225, self.y+65+d), (55, 20)), text='del', manager=self.ui_manager, on_click=lambda *args: delete_route(obj)))
 
         def change_train_n(obj, c):
             if 0 <= obj.train_n + c <= obj.max_n:
                 obj.train_n += c
                 obj.save()
+                SESSION.create_trains()
+
+        def delete_route(obj):
+            obj.delete_instance()
+            SESSION.update_routes_map()
+            SESSION.create_trains()
 
     routes_list = core.RoutesPaginator(
         screen,

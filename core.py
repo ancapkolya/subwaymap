@@ -207,7 +207,8 @@ class Session:
             self.routes[route.id] = list()
             stations = list()
             route.load_data()
-            for line in route.lines:
+            for line_id in route.lines_queue:
+                line = models.Line.get_by_id(line_id)
                 sprite = Route(self.routes_group, line, route)
                 self.sprites.routes.append(sprite)
                 sprite.create_route()
@@ -216,11 +217,15 @@ class Session:
                 for i, s in enumerate(stations[:-1]):
                     for j in range(2):
                         if stations[i][j] in stations[i + 1]:
-                            res = [stations[i].pop(j)]
-                            self.routes[route.id].extend([stations[i][0]] + res)
+                            if i == 0:
+                                res = stations[i].pop(j)
+                                self.routes[route.id].extend([stations[i][0], res])
+                            else:
+                                self.routes[route.id].append(stations[i].pop(j))
                             break
                 for j in range(2):
                     if stations[-1][j] == self.routes[route.id][-1]:
+                        stations[-1].pop(j)
                         self.routes[route.id].append(stations[-1][0])
                         break
             else:
@@ -233,6 +238,17 @@ class Session:
             sprite = Station(self.stations_group, self, station)
             self.sprites.stations.append(sprite)
             sprite.update_routes()
+
+    def create_trains(self):
+        for route in self.session.routes:
+            route.load_data()
+            for i in range(route.trains_n):
+                Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id].index(i)), self.clock, self)
+
+    def get_next_station(self, route, station, direction):
+        ind = self.routes[route.id].index(station.id)
+        direction = direction if 0 <= ind + direction < len(self.routes[route.id]) else -1 * direction
+        return models.Station.get_by_id(self.routes[route.id][direction + ind]), direction
 
     draw_objects = lambda self: [obj.draw() for obj in self.draw_objects_array]
 
@@ -553,15 +569,15 @@ class Route(pygame.sprite.Sprite):
 
 class Train(pygame.sprite.Sprite):
 
-    def __init__(self, group, route, line, clock, session, direction=1):
+    def __init__(self, group, route, station, clock, session, direction=1):
         super().__init__(group)
 
+        self.session = session
         self.route = route
         self.clock = clock
-        self.break_points_group = session.break_points_group
 
         self.direction = direction
-        self.station, self.next_station = [line.start, line.end][::self.direction]
+        self.station, self.next_station = station, session.get_next_station(station, direction)
         self.pos = (self.station.x, self.station.y)
         self.vx, self.vy = 0, 0
 
@@ -579,11 +595,11 @@ class Train(pygame.sprite.Sprite):
         self.rect.x += self.vx * time_delta
         self.rect.y += self.vy * time_delta
 
-        if pygame.sprite.spritecollideany(self, self.break_points_group):
-            pass
+        bp = pygame.sprite.spritecollideany(self, self.session.break_points_group)
+        s = pygame.sprite.spritecollideany(self, self.session.stations_group)
 
-
-
-
-
-
+        if bp:
+            self.vx, self.vy = bp.directions[self.next_station.id]
+        elif s:
+            self.next_station, self.direction = self.session.get_next_station(self.route, s, self.direction)
+            self.vx, self.vy = s.directions[self.next_station.id]
