@@ -147,6 +147,7 @@ class SessionSprites:
     stations = list()
     lines = list()
     routes = list()
+    trains = dict()
     breakpoints = dict()
 
 
@@ -191,6 +192,7 @@ class Session:
         self.update_lines_map()
         self.update_stations_map()
         self.update_routes_map()
+        self.create_trains()
 
     def update_lines_map(self):
         self.kill_array(self.sprites.breakpoints.values())
@@ -229,7 +231,7 @@ class Session:
                         self.routes[route.id].append(stations[-1][0])
                         break
             else:
-                self.routes[route.id] = stations
+                self.routes[route.id] = stations[0]
         self.routes_list_update_callback()
 
     def update_stations_map(self):
@@ -240,10 +242,13 @@ class Session:
             sprite.update_routes()
 
     def create_trains(self):
+        [self.kill_array(array) for array in self.sprites.trains.values()]
+        self.sprites.trains = dict()
         for route in self.session.routes:
             route.load_data()
-            for i in range(route.trains_n):
-                Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id].index(i)), self.clock, self)
+            self.sprites.trains[route.id] = list()
+            for i in range(route.train_n):
+                self.sprites.trains[route.id].append(Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id][i]), self.clock, self))
 
     def get_next_station(self, route, station, direction):
         ind = self.routes[route.id].index(station.id)
@@ -448,8 +453,8 @@ class RoutesPaginator():
     add_ui = lambda self, obj: self.ui_elements.append(obj)
     draw = lambda self: [func() for func in self.draw_array]
 
-TRAIN_SPEED_MS = 15
-ANGLE_TRAIN_SPEED_MS = 10.5
+TRAIN_SPEED_MS = 20
+ANGLE_TRAIN_SPEED_MS = 10
 
 bigger_0 = lambda x: 1 if x >= 0 else -1
 
@@ -469,9 +474,9 @@ class BreakPoint(pygame.sprite.Sprite):
 
     def __init__(self, group, pos, s1, s2):
         super().__init__(group)
-        self.image = pygame.Surface((4, 4), pygame.SRCALPHA, 32)
-        self.rect = pygame.Rect(pos[0] - 2, pos[1] - 2, 4, 4)
-        self.directions = {s.id:count_speed(self.rect.x + 2, self.rect.y + 2, s.x, s.y) for s in [s1, s2]}
+        self.image = pygame.Surface((2, 2), pygame.SRCALPHA, 32)
+        self.rect = pygame.Rect(pos[0] - 1, pos[1] - 1, 2, 2)
+        self.directions = {s.id:count_speed(self.rect.x + 1, self.rect.y + 1, s.x, s.y) for s in [s1, s2]}
 
 
 class Station(pygame.sprite.Sprite):
@@ -493,7 +498,7 @@ class Station(pygame.sprite.Sprite):
         for i, group in enumerate([[l for l in self.obj.lines_1], [l for l in self.obj.lines_2]]):
             for line in group:
                 bp = self.session.sprites.breakpoints[line.id]
-                self.directions[line.end.id if i == 0 else line.start.id] = count_speed(self.rect.x + 10, self.rect.y + 10, bp.rect.x + 2, bp.rect.y + 2)
+                self.directions[line.end.id if i == 0 else line.start.id] = count_speed(self.rect.x + 10, self.rect.y + 10, bp.rect.x + 1, bp.rect.y + 1)
 
 
 class Line(pygame.sprite.Sprite):
@@ -517,12 +522,13 @@ class Line(pygame.sprite.Sprite):
             b_y = y1 + d_x * (y - y1) // d_y
             pygame.draw.line(self.image, 'white', (x - 300, y), (x - 300, b_y), 8)
             pygame.draw.line(self.image, 'white', (x - 300, b_y), (x1 - 300, y1), 10)
-            self.breakpoint = BreakPoint(self.break_points_group, (x - 300, b_y), self.obj.start, self.obj.end)
+            self.breakpoint = BreakPoint(self.break_points_group, (x, b_y), self.obj.start, self.obj.end)
         else:
             b_x = x + (d_y + 5) * (x1 - x) // d_x - 300
             pygame.draw.line(self.image, 'white', (x - 300, y), (b_x, y1), 10)
             pygame.draw.line(self.image, 'white', (b_x, y1), (x1 - 300, y1), 8)
-            self.breakpoint = BreakPoint(self.break_points_group, (b_x, y1), self.obj.start, self.obj.end)
+            self.breakpoint = BreakPoint(self.break_points_group, (b_x + 300, y1), self.obj.start, self.obj.end)
+
 
 class Route(pygame.sprite.Sprite):
 
@@ -576,10 +582,13 @@ class Train(pygame.sprite.Sprite):
         self.route = route
         self.clock = clock
 
-        self.direction = direction
-        self.station, self.next_station = station, session.get_next_station(station, direction)
+        self.next_station, self.direction = session.get_next_station(route, station, direction)
+        self.station = station
         self.pos = (self.station.x, self.station.y)
         self.vx, self.vy = 0, 0
+        self.collided = None
+
+        print(self.station.id, self.next_station.id, 'eeeeeeeeeeeeeeeeeeeeeeeeee')
 
         self.draw()
 
@@ -592,14 +601,19 @@ class Train(pygame.sprite.Sprite):
 
 
     def update(self, time_delta, game_time):
-        self.rect.x += self.vx * time_delta
-        self.rect.y += self.vy * time_delta
+        self.rect.x += int(self.vx * time_delta)
+        self.rect.y += int(self.vy * time_delta)
 
         bp = pygame.sprite.spritecollideany(self, self.session.break_points_group)
         s = pygame.sprite.spritecollideany(self, self.session.stations_group)
 
-        if bp:
-            self.vx, self.vy = bp.directions[self.next_station.id]
-        elif s:
-            self.next_station, self.direction = self.session.get_next_station(self.route, s, self.direction)
-            self.vx, self.vy = s.directions[self.next_station.id]
+        if bp or s:
+            if bp and bp != self.collided:
+                self.rect.x, self.rect.y = bp.rect.x - 4, bp.rect.y - 4
+                self.vx, self.vy = bp.directions[self.next_station.id]
+            elif s and s != self.collided:
+                self.rect.x, self.rect.y = s.rect.x + 4, s.rect.y + 4
+                self.station = s.obj
+                self.next_station, self.direction = self.session.get_next_station(self.route, s.obj, self.direction)
+                self.vx, self.vy = s.directions[self.next_station.id]
+            self.collided = bp or s
