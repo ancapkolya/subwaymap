@@ -271,27 +271,38 @@ def init_game_window():
 
     core.MapSprite(all_sprites, obj=SESSION.get_map())
 
-    text_render.add_text(screen, 10, 125, 15, 'clocks', True)
-    text_render.add_text_stream(screen, 155, 160, 15, func=clock.get_str_datetime, bold=True)
+    text_render.add_text(screen, 10, 125, 15, 'budget', True)
+    text_render.add_text_stream(screen, 10, 155, 15, func=lambda: f'cash: 1000000', bold=True)
+    text_render.add_text_stream(screen, 155, 155, 15, func=lambda: f'build cost: 100000', bold=True)
 
-    pause = core.Button(relative_rect=pygame.Rect((10, 155), (135, 30)), text='pause', manager=game_ui_manager, on_click=lambda self, event: change_time_mode(self, event))
-    speed_1 = core.Button(relative_rect=pygame.Rect((10, 195), (85, 30)), text='6min/day', manager=game_ui_manager, on_click=lambda self, event: change_time_mode(self, event, 1))
-    speed_2 = core.Button(relative_rect=pygame.Rect((105, 195), (85, 30)), text='24sec/day', manager=game_ui_manager, on_click=lambda self, event: change_time_mode(self, event, 2))
-    speed_3 = core.Button(relative_rect=pygame.Rect((200, 195), (85, 30)), text='1sec/day', manager=game_ui_manager, on_click=lambda self, event: change_time_mode(self, event, 3))
+    speed_1 = core.Button(relative_rect=pygame.Rect((10, 195), (85, 30)), text='6min/day', manager=game_ui_manager,
+                          on_click=lambda self, event: change_time_mode(self, event, 1))
+    speed_2 = core.Button(relative_rect=pygame.Rect((105, 195), (85, 30)), text='24sec/day', manager=game_ui_manager,
+                          on_click=lambda self, event: change_time_mode(self, event, 2))
+    speed_3 = core.Button(relative_rect=pygame.Rect((200, 195), (85, 30)), text='1sec/day', manager=game_ui_manager,
+                          on_click=lambda self, event: change_time_mode(self, event, 3))
+
+    text_render.add_text(screen, 10, 240, 15, 'clocks', True)
+    text_render.add_text_stream(screen, 155, 275, 15, func=clock.get_str_datetime, bold=True)
+
+    pause = core.Button(relative_rect=pygame.Rect((10, 270), (135, 30)), text='pause', manager=game_ui_manager, on_click=lambda self, event: change_time_mode(self, event))
+    speed_1 = core.Button(relative_rect=pygame.Rect((10, 310), (85, 30)), text='6min/day', manager=game_ui_manager, on_click=lambda self, event: change_time_mode(self, event, 1))
+    speed_2 = core.Button(relative_rect=pygame.Rect((105, 310), (85, 30)), text='24sec/day', manager=game_ui_manager, on_click=lambda self, event: change_time_mode(self, event, 2))
+    speed_3 = core.Button(relative_rect=pygame.Rect((200, 310), (85, 30)), text='1sec/day', manager=game_ui_manager, on_click=lambda self, event: change_time_mode(self, event, 3))
 
 
     # Building
-    text_render.add_text(screen, 10, 240, 15, 'building', True)
+    text_render.add_text(screen, 10, 355, 15, 'building', True)
 
-    core.Button(relative_rect=pygame.Rect((10, 260), (135, 30)), text='build station', manager=game_ui_manager, on_click=create_station_handler)
-    core.Button(relative_rect=pygame.Rect((155, 260), (135, 30)), text='build line', manager=game_ui_manager, on_click=create_line_handler)
+    core.Button(relative_rect=pygame.Rect((10, 375), (135, 30)), text='build station', manager=game_ui_manager, on_click=create_station_handler)
+    core.Button(relative_rect=pygame.Rect((155, 375), (135, 30)), text='build line', manager=game_ui_manager, on_click=create_line_handler)
 
     # Routes
-    text_render.add_text(screen, 10, 305, 15, 'Routes', True)
+    text_render.add_text(screen, 10, 420, 15, 'Routes', True)
 
-    core.Button(relative_rect=pygame.Rect((10, 325), (135, 30)), text='create route', manager=game_ui_manager,
+    core.Button(relative_rect=pygame.Rect((10, 440), (135, 30)), text='create route', manager=game_ui_manager,
                 on_click=create_route_handler)
-    core.Button(relative_rect=pygame.Rect((155, 325), (135, 30)), text='empty', manager=game_ui_manager,
+    core.Button(relative_rect=pygame.Rect((155, 440), (135, 30)), text='empty', manager=game_ui_manager,
                 on_click=create_line_handler)
 
     def route_draw_func(self, obj, i):
@@ -321,7 +332,7 @@ def init_game_window():
         screen,
         ui_manager=game_ui_manager,
         auto_text_render=routes_paginator_text_render,
-        x=0, y=375,
+        x=0, y=490,
         get_objects_func=lambda: list(models.Route.filter(game=SESSION.session.id)),
         draw_func=route_draw_func
     )
