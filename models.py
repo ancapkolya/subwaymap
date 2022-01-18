@@ -25,6 +25,7 @@ class JsonModel(BaseModel):
                 self.__data__[field] = json.loads(self.__data__[field])
 
     def dump_data(self):
+        print(self.__data__.keys())
         for field in self._meta.json_fields:
             if self.__data__[field].__class__.__name__ != 'str':
                 self.__data__[field] = json.dumps(self.__data__[field])
@@ -38,13 +39,21 @@ class GameSession(JsonModel):
 
     score = IntegerField(default=0)
     level = IntegerField(default=0)
+    cash_amount = IntegerField(default=5000)
 
     map = TextField()
     centers = TextField()
     datetime = DateTimeField(default=datetime.datetime(year=2000, month=1, day=1, hour=1, minute=1, second=1, microsecond=1))
 
+    meta_data = TextField(default={'lines_len': 0, })
+
     class Meta:
-        json_fields = ['map', 'centers']
+        json_fields = ['map', 'centers', 'meta_data']
+
+    def check_meta(self):
+        if self.meta_data.__class__.__name__ != 'str':
+            if 'lines_len' not in self.meta_data or ('lines_len' in self.meta_data and self.meta_data['lines_len'].__class__.__name__ not in ['int', 'float']):
+                self.meta_data['lines_len'] = int(sum([((line.start.x-line.end.x)**2+(line.start.y-line.end.y)**2)**0.5 // 30 for line in self.lines]))
 
 
 class Station(BaseModel):

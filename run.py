@@ -33,6 +33,7 @@ def create_station_handler(self, event):
     self.on_click_func = accept_station_handler
 
     def clear_func():
+        SESSION.build_cost = 0
         self.reset_text()
         self.on_click_func = create_station_handler
 
@@ -57,6 +58,7 @@ def create_station(btn, event=None, commit=False):
     if commit and len(action_data.objects) > 0 and len(action_data.sprites) > 0:
         action_data.objects[-1].save()
         SESSION.sprites.stations.append(action_data.sprites[-1])
+        SESSION.build_obj()
     else:
         x, y = event.pos
 
@@ -72,6 +74,7 @@ def create_station(btn, event=None, commit=False):
                 x=action_data.clicks[-1][0],
                 y=action_data.clicks[-1][1]
             )
+            SESSION.build_cost = 100
             action_data.sprites.append(core.Station(stations_sprites, SESSION, station))
             action_data.objects.append(station)
 
@@ -89,6 +92,7 @@ def create_line_handler(self, event):
     self.on_click_func = accept_line_handler
 
     def clear_func():
+        SESSION.build_cost = 0
         self.reset_text()
         self.on_click_func = create_line_handler
 
@@ -113,6 +117,7 @@ def create_line_fr(btn, event=None, commit=False):
         [obj.save() for obj in action_data.objects]
         SESSION.sprites.lines.extend(action_data.sprites)
         SESSION.update_map()
+        SESSION.build_obj()
     else:
         cond = False
         if len(action_data.clicks) > 0:
@@ -129,21 +134,25 @@ def create_line_fr(btn, event=None, commit=False):
                 for s in SESSION.sprites.stations:
                     if not start or not end:
                         if not start and s.rect.collidepoint(*action_data.clicks[-1]):
-                            start = s.obj.id
+                            start = s.obj
                         if not end and s.rect.collidepoint(*action_data.clicks[-2]):
-                            end = s.obj.id
+                            end = s.obj
                     else:
                         break
                 if start and end:
                     for l in SESSION.session.lines:
-                        if {l.start.id, l.end.id} == {start, end}:
+                        if {l.start.id, l.end.id} == {start.id, end.id}:
                             action_data.clicks = action_data.clicks[:-1]
                             return
                     action_data.objects.append(models.Line(
                         game=SESSION.session.id,
-                        start=start,
-                        end=end
+                        start=start.id,
+                        end=end.id
                     ))
+                    distance = ((start.x - end.x) ** 2 + (start.y - end.y) ** 2) ** 0.5
+                    SESSION.build_cost += int(distance * 3)
+                    SESSION.new_distance += distance // 30
+
                     action_data.sprites.append(core.Line(lines_sprites, break_points_group, action_data.objects[-1]))
                     action_data.clicks = action_data.clicks[-1:]
 
@@ -259,7 +268,7 @@ def init_game_window():
     core.Button(relative_rect=pygame.Rect((155, 40), (135, 30)), text='quit', manager=game_ui_manager,
                 on_click=lambda *args: game_loop.set_window(start_window))
     core.Button(relative_rect=pygame.Rect((10, 80), (135, 30)), text='save', manager=game_ui_manager,
-                on_click=lambda: print(0))
+                on_click=lambda *args: SESSION.save())
     core.Button(relative_rect=pygame.Rect((155, 80), (135, 30)), text='empty', manager=game_ui_manager,
                 on_click=lambda: print(1))
 
@@ -272,15 +281,18 @@ def init_game_window():
     core.MapSprite(all_sprites, obj=SESSION.get_map())
 
     text_render.add_text(screen, 10, 125, 15, 'budget', True)
-    text_render.add_text_stream(screen, 10, 155, 15, func=lambda: f'cash: 1000000', bold=True)
-    text_render.add_text_stream(screen, 155, 155, 15, func=lambda: f'build cost: 100000', bold=True)
+    text_render.add_text_stream(screen, 10, 155, 15, func=lambda: f'cash: {round(SESSION.session.cash_amount, 2)}', bold=True)
+    text_render.add_text_stream(screen, 155, 155, 15, func=lambda: f'build cost: {round(SESSION.build_cost, 2)}', bold=True)
 
-    speed_1 = core.Button(relative_rect=pygame.Rect((10, 195), (85, 30)), text='6min/day', manager=game_ui_manager,
+    text_render.add_text_stream(screen, 10, 195, 15, func=lambda: f'exp./day: {SESSION.economics_core.daily_expenses}', bold=True)
+    text_render.add_text_stream(screen, 155, 195, 15, func=lambda: f'rev./day: {SESSION.economics_core.daily_revenue}', bold=True)
+
+    '''speed_1 = core.Button(relative_rect=pygame.Rect((10, 195), (85, 30)), text='6min/day', manager=game_ui_manager,
                           on_click=lambda self, event: change_time_mode(self, event, 1))
     speed_2 = core.Button(relative_rect=pygame.Rect((105, 195), (85, 30)), text='24sec/day', manager=game_ui_manager,
                           on_click=lambda self, event: change_time_mode(self, event, 2))
     speed_3 = core.Button(relative_rect=pygame.Rect((200, 195), (85, 30)), text='1sec/day', manager=game_ui_manager,
-                          on_click=lambda self, event: change_time_mode(self, event, 3))
+                          on_click=lambda self, event: change_time_mode(self, event, 3))'''
 
     text_render.add_text(screen, 10, 240, 15, 'clocks', True)
     text_render.add_text_stream(screen, 155, 275, 15, func=clock.get_str_datetime, bold=True)
@@ -359,6 +371,7 @@ def game_window_process_events(self, event):
 
 def game_window_update(self, *args, **kwargs):
     SESSION.draw_objects()
+    SESSION.economics_core.update(args[-1])
     self.groups[4].update(*args)
 
 game_window = core.Window(

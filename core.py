@@ -11,6 +11,7 @@ from map_core import Map
 
 # CONSTANTS
 class TimeMode:
+
     START_DATE = datetime.datetime(year=2000, month=1, day=1, hour=1, minute=1, second=1, microsecond=1)
 
     PAUSE = datetime.timedelta(minutes=0)
@@ -143,7 +144,28 @@ class Window:
             text.clear()
 
 
+class EconomicsCore:
+
+    daily_expenses = 0
+    daily_revenue = 0
+    expenses_delta = 0
+    session = None
+
+    init = lambda self, session: self.__setattr__('session', session)
+
+    def update(self, game_delta):
+        if self.session:
+            second_expenses = self.session.session.meta_data['lines_len'] * 0.00000015 + sum([models.Route.get_by_id(route).train_n * 0.0000001 for route in self.session.routes])
+            self.daily_expenses = second_expenses * 3600 * 24
+            self.expenses_delta += second_expenses * game_delta.seconds
+            if self.expenses_delta >= 1:
+                self.session.session.cash_amount -= self.expenses_delta
+                self.expenses_delta = 0
+            self.daily_revenue, self.daily_expenses = round(self.daily_revenue, 2), round(self.daily_expenses, 2)
+
+
 class SessionSprites:
+
     stations = list()
     lines = list()
     routes = list()
@@ -154,7 +176,11 @@ class SessionSprites:
 class Session:
 
     sprites = SessionSprites()
+    economics_core = EconomicsCore()
     routes = dict()
+
+    build_cost = 0
+    new_distance = 0
 
     def __init__(self, pk=-1):
         if pk > -1:
@@ -166,6 +192,13 @@ class Session:
         else:
             self.create_session()
         self.session.load_data()
+        self.session.check_meta()
+        self.economics_core.init(self)
+
+    def save(self):
+        self.session.datetime = self.clock.datetime
+        self.session.save()
+        self.session.load_data()
 
     def load_sprites(self, stations_group, lines_group, routes_group, trains_group, break_points_group, routes_list_update_callback, draw_objects_array, clock):
         self.break_points_group = break_points_group
@@ -176,6 +209,8 @@ class Session:
         self.routes_list_update_callback = routes_list_update_callback
         self.draw_objects_array = draw_objects_array
         self.clock = clock
+
+        self.clock.datetime = self.session.datetime
 
         self.update_map()
 
@@ -254,6 +289,14 @@ class Session:
         ind = self.routes[route.id].index(station.id)
         direction = direction if 0 <= ind + direction < len(self.routes[route.id]) else -1 * direction
         return models.Station.get_by_id(self.routes[route.id][direction + ind]), direction
+
+    def build_obj(self):
+        self.session.cash_amount -= self.build_cost
+        self.build_cost = 0
+        self.session.meta_data['lines_len'] += self.new_distance
+        self.new_distance = 0
+        self.session.save()
+        self.session.load_data()
 
     draw_objects = lambda self: [obj.draw() for obj in self.draw_objects_array]
 
@@ -587,8 +630,6 @@ class Train(pygame.sprite.Sprite):
         self.pos = (self.station.x, self.station.y)
         self.vx, self.vy = 0, 0
         self.collided = None
-
-        print(self.station.id, self.next_station.id, 'eeeeeeeeeeeeeeeeeeeeeeeeee')
 
         self.draw()
 
