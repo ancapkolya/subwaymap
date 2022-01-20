@@ -282,8 +282,13 @@ class Session:
         for route in self.session.routes:
             route.load_data()
             self.sprites.trains[route.id] = list()
-            for i in range(route.train_n):
-                self.sprites.trains[route.id].append(Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id][i]), self.clock, self))
+            first_direction = route.train_n // 2
+            for i in range(first_direction):
+                print(models.Station.get_by_id(self.routes[route.id][i]), i)
+                self.sprites.trains[route.id].append(Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id][i]), self.clock, self, direction=1))
+            for i in range(route.train_n - first_direction):
+                print(models.Station.get_by_id(self.routes[route.id][-1 * i]), i)
+                self.sprites.trains[route.id].append(Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id][-1 * i]), self.clock, self, direction=-1))
 
     def get_next_station(self, route, station, direction):
         ind = self.routes[route.id].index(station.id)
@@ -543,6 +548,9 @@ class Station(pygame.sprite.Sprite):
                 bp = self.session.sprites.breakpoints[line.id]
                 self.directions[line.end.id if i == 0 else line.start.id] = count_speed(self.rect.x + 10, self.rect.y + 10, bp.rect.x + 1, bp.rect.y + 1)
 
+    def count_traffic(self):
+        x0, y0 = self.rect.x if self.rect.x else 1
+
 
 class Line(pygame.sprite.Sprite):
 
@@ -630,6 +638,7 @@ class Train(pygame.sprite.Sprite):
         self.pos = (self.station.x, self.station.y)
         self.vx, self.vy = 0, 0
         self.collided = None
+        self.collided_station = None
 
         self.draw()
 
@@ -640,7 +649,6 @@ class Train(pygame.sprite.Sprite):
         pygame.draw.circle(self.image, pygame.Color("white"), (6, 6), 5)
         pygame.draw.circle(self.image, pygame.Color("black"), (6, 6), 5, 1)
 
-
     def update(self, time_delta, game_time):
         self.rect.x += int(self.vx * time_delta)
         self.rect.y += int(self.vy * time_delta)
@@ -649,12 +657,14 @@ class Train(pygame.sprite.Sprite):
         s = pygame.sprite.spritecollideany(self, self.session.stations_group)
 
         if bp or s:
-            if bp and bp != self.collided:
-                self.rect.x, self.rect.y = bp.rect.x - 4, bp.rect.y - 4
-                self.vx, self.vy = bp.directions[self.next_station.id]
-            elif s and s != self.collided:
+            if s and s != self.collided and self.collided_station != s:
                 self.rect.x, self.rect.y = s.rect.x + 4, s.rect.y + 4
                 self.station = s.obj
                 self.next_station, self.direction = self.session.get_next_station(self.route, s.obj, self.direction)
                 self.vx, self.vy = s.directions[self.next_station.id]
-            self.collided = bp or s
+                self.collided_station = s
+                self.collided = s
+            elif bp and bp != self.collided:
+                self.rect.x, self.rect.y = bp.rect.x - 4, bp.rect.y - 4
+                self.vx, self.vy = bp.directions[self.next_station.id]
+                self.collided = bp
