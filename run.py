@@ -56,9 +56,15 @@ def accept_station_handler(self, event):
 def create_station(btn, event=None, commit=False):
     cond = True
     if commit and len(action_data.objects) > 0 and len(action_data.sprites) > 0:
-        action_data.objects[-1].save()
-        SESSION.sprites.stations.append(action_data.sprites[-1])
-        SESSION.build_obj()
+        if SESSION.build_obj(action_data):
+            action_data.objects[-1].save()
+            SESSION.sprites.stations.append(action_data.sprites[-1])
+            SESSION.build_obj(action_data)
+        else:
+            core.MessageBox(
+                warning_sprites,
+                manager=game_ui_manager,
+                text="У вас недостаточно денег")
     else:
         x, y = event.pos
 
@@ -114,10 +120,15 @@ def accept_line_handler(self, event):
 
 def create_line_fr(btn, event=None, commit=False):
     if commit:
-        [obj.save() for obj in action_data.objects]
-        SESSION.sprites.lines.extend(action_data.sprites)
-        SESSION.update_map()
-        SESSION.build_obj()
+        if SESSION.build_obj(action_data):
+            [obj.save() for obj in action_data.objects]
+            SESSION.sprites.lines.extend(action_data.sprites)
+            SESSION.update_map()
+        else:
+            core.MessageBox(
+                warning_sprites,
+                manager=game_ui_manager,
+                text="У вас недостаточно денег")
     else:
         cond = False
         if len(action_data.clicks) > 0:
@@ -278,6 +289,12 @@ def init_game_window():
         clock.set_mode(mode)
         self.set_text('chosen')
 
+        if clock.mode != core.TIME_MODE.SLOW and clock.mode != core.TIME_MODE.PAUSE:
+            [SESSION.kill_array(array) for array in SESSION.sprites.trains.values()]
+        elif clock.mode == core.TIME_MODE.SLOW:
+            SESSION.create_trains()
+
+
     core.MapSprite(all_sprites, obj=SESSION.get_map())
 
     text_render.add_text(screen, 10, 125, 15, 'budget', True)
@@ -355,9 +372,10 @@ def init_game_window():
         routes_group=routes_group,
         trains_group=trains_group,
         break_points_group=break_points_group,
+        warning_sprites=warning_sprites,
+        ui_manager=game_ui_manager,
         routes_list_update_callback=routes_list.update_callback,
         draw_objects_array=[routes_list],
-        clock=clock
     )
 
 
@@ -372,6 +390,7 @@ def game_window_process_events(self, event):
 def game_window_update(self, *args, **kwargs):
     SESSION.draw_objects()
     SESSION.economics_core.update(args[-1])
+    SESSION.events_core.update(args[-1])
     self.groups[4].update(*args)
 
 game_window = core.Window(
@@ -398,7 +417,7 @@ def init_start_window():
 
     def load_game(pk):
         global SESSION
-        SESSION = core.Session(pk)
+        SESSION = core.Session(pk, clock)
         game_loop.set_window(game_window)
 
     start_text_render.add_text(screen, 732, 280, 50, 'subwaymap', True)
@@ -450,7 +469,7 @@ def create_and_run_game(map_obj, level):
         level=level
     )
     session.save()
-    SESSION = core.Session(pk=session.id)
+    SESSION = core.Session(pk=session.id, clock=clock)
     game_loop.set_window(game_window)
 
 

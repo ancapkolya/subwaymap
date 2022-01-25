@@ -1,5 +1,6 @@
 import datetime
 import os
+import random
 import sys
 import pygame
 import pygame_gui
@@ -144,24 +145,138 @@ class Window:
             text.clear()
 
 
-class EconomicsCore:
+class Event:
 
-    daily_expenses = 0
-    daily_revenue = 0
-    expenses_delta = 0
-    session = None
+    def __init__(self, datetime, callback):
+        self.datetime = datetime
+        self.callback_func = callback
+
+    run = lambda self, create_message: self.callback_func(self, create_message)
+
+
+class EventCore:
+
+    events_queue = list()
 
     init = lambda self, session: self.__setattr__('session', session)
 
     def update(self, game_delta):
+        for event in self.events_queue.copy():
+            if event.datetime <= self.session.clock.datetime:
+                event.run(self.create_message)
+                self.events_queue.remove(event)
+
+    def create_message(self, text='', draw_func=None):
+        if draw_func:
+            MessageBox(self.session.warning_sprites, manager=self.session.ui_manager, draw_func=draw_func)
+        else:
+            MessageBox(self.session.warning_sprites, manager=self.session.ui_manager, text=text)
+
+    add_random_event = lambda self, callback, max_days=50: self.events_queue.append(Event(self.session.clock.datetime+datetime.timedelta(days=random.choice(range(10, max_days, 1))), callback))
+
+
+class EconomicsCore:
+
+    ticket_cost = 3
+
+    daily_expenses = 0
+    second_expenses = 0
+    daily_revenue = 0
+    second_revenues = 0
+    cash_delta = 0
+    session = None
+
+    stations_data = dict()
+    routes_data = dict()
+
+
+    init = lambda self, session: self.__setattr__('session', session)
+
+    def init(self, session):
+
+        def give_subsidy(event, create_message):
+
+            def draw_func(screen):
+                create_text(screen, 10, 50, 15, 'город выдал вам', bold=True)
+                create_text(screen, 10, 70, 15, f'субсидию в размере {subsidy}', bold=True)
+
+            subsidy = random.choice(range(500, 2001, 100))
+            self.session.session.cash_amount += subsidy
+            create_message(draw_func=draw_func)
+            self.session.events_core.add_random_event(give_subsidy, 50*self.session.session.level)
+
+        self.session = session
+        self.session.events_core.add_random_event(give_subsidy, 50*self.session.session.level)
+
+    def update(self, game_delta):
         if self.session:
-            second_expenses = self.session.session.meta_data['lines_len'] * 0.00000015 + sum([models.Route.get_by_id(route).train_n * 0.0000001 for route in self.session.routes])
-            self.daily_expenses = second_expenses * 3600 * 24
-            self.expenses_delta += second_expenses * game_delta.seconds
-            if self.expenses_delta >= 1:
-                self.session.session.cash_amount -= self.expenses_delta
-                self.expenses_delta = 0
-            self.daily_revenue, self.daily_expenses = round(self.daily_revenue, 2), round(self.daily_expenses, 2)
+            self.cash_delta += (self.second_revenues - self.second_expenses) * game_delta.seconds
+            if abs(self.cash_delta) >= 1:
+                self.session.session.cash_amount += self.cash_delta
+                self.cash_delta = 0
+
+    def update_economics_properties(self):
+        self.count_people_flow()
+        self.update_expenses()
+        self.update_revenues()
+
+    def update_expenses(self):
+        if self.session:
+            self.second_expenses = self.session.session.meta_data['lines_len'] * 0.00000015 + sum(
+                [models.Route.get_by_id(route).train_n * 0.0000001 for route in self.session.routes])
+            self.daily_expenses = self.second_expenses * 3600 * 24
+            self.daily_expenses = round(self.daily_expenses, 2)
+
+    def update_revenues(self):
+        if self.session:
+            self.daily_revenue = sum([i[0] for i in self.routes_data.values()]) * self.ticket_cost / 250 / self.session.session.level
+            self.second_revenues = self.daily_revenue / 86400
+            self.daily_revenue = round(self.daily_revenue, 2)
+
+    def count_people_flow(self):
+
+        if len([i for i in ['station_data', 'routes_data'] if i in self.session.session.meta_data]) == 2:
+
+            self.stations_data = self.session.session.meta_data['station_data']
+            self.routes_data = self.session.session.meta_data['routes_data']
+
+        else:
+
+            map = self.session.get_map().map
+
+            # station flow cycle
+            self.stations_data = dict()
+            for station in self.session.session.stations:
+                s_routes = list()
+                for i in station.get_lines():
+                    for j in i.routes:
+                        s_routes.append(j.id)
+                self.stations_data[station.id] = [0, list(set(s_routes))]
+                column_n, row_n = [i - 3 if i > 3 else 0 for i in self.get_cell(station.x-300, station.y-300)]
+                for row in range(row_n, row_n + 7, 1):
+                    for column in range(column_n, column_n + 7, 1):
+                        self.stations_data[station.id][0] += int(map[column, row])
+                if self.stations_data[station.id][1] != 0:
+                    self.stations_data[station.id][0] //= 10
+
+            # routes flow cycle
+            self.routes_data = dict()
+            for route in self.session.session.routes:
+                self.routes_data[route.id] = [0, set()]
+                for i in self.session.routes[route.id]:
+                    self.routes_data[route.id][0] += self.stations_data[i][0] // len(self.stations_data[i][1])
+                    if len(self.stations_data[i][1]) > 1:
+                        self.routes_data[route.id][1].add(i)
+                self.routes_data[route.id][1] = list(self.routes_data[route.id][1])
+                transfer_volume = self.routes_data[route.id][0] * 0.5
+                station_flow_volume = sum([self.stations_data[i][0] for i in self.routes_data[route.id][1]])
+                for i in self.routes_data[route.id][1]:
+                    self.stations_data[i][0] += int(self.stations_data[i][0] / station_flow_volume * transfer_volume * random.randrange(7, 13, 1) / 10)
+
+            self.session.session.meta_data['station_data'] = self.stations_data
+            self.session.session.meta_data['routes_data'] = self.routes_data
+
+    get_cell = lambda self, *pos: [i // 10 for i in pos]
 
 
 class SessionSprites:
@@ -177,12 +292,13 @@ class Session:
 
     sprites = SessionSprites()
     economics_core = EconomicsCore()
+    events_core = EventCore()
     routes = dict()
 
     build_cost = 0
     new_distance = 0
 
-    def __init__(self, pk=-1):
+    def __init__(self, pk=-1, clock=None):
         if pk > -1:
             session = models.GameSession.get_by_id(pk)
             if session:
@@ -191,26 +307,32 @@ class Session:
                 self.create_session()
         else:
             self.create_session()
+
+        self.clock = clock
+        self.clock.datetime = self.session.datetime
+
         self.session.load_data()
         self.session.check_meta()
+
+        self.events_core.init(self)
         self.economics_core.init(self)
 
     def save(self):
         self.session.datetime = self.clock.datetime
+        print(self.session.meta_data)
         self.session.save()
         self.session.load_data()
 
-    def load_sprites(self, stations_group, lines_group, routes_group, trains_group, break_points_group, routes_list_update_callback, draw_objects_array, clock):
+    def load_sprites(self, stations_group, lines_group, routes_group, trains_group, break_points_group, warning_sprites, ui_manager, routes_list_update_callback, draw_objects_array):
         self.break_points_group = break_points_group
         self.stations_group = stations_group
         self.lines_group = lines_group
         self.routes_group = routes_group
         self.trains_group = trains_group
+        self.warning_sprites = warning_sprites
+        self.ui_manager = ui_manager
         self.routes_list_update_callback = routes_list_update_callback
         self.draw_objects_array = draw_objects_array
-        self.clock = clock
-
-        self.clock.datetime = self.session.datetime
 
         self.update_map()
 
@@ -228,6 +350,7 @@ class Session:
         self.update_stations_map()
         self.update_routes_map()
         self.create_trains()
+        self.economics_core.update_economics_properties()
 
     def update_lines_map(self):
         self.kill_array(self.sprites.breakpoints.values())
@@ -284,24 +407,28 @@ class Session:
             self.sprites.trains[route.id] = list()
             first_direction = route.train_n // 2
             for i in range(first_direction):
-                print(models.Station.get_by_id(self.routes[route.id][i]), i)
                 self.sprites.trains[route.id].append(Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id][i]), self.clock, self, direction=1))
             for i in range(route.train_n - first_direction):
-                print(models.Station.get_by_id(self.routes[route.id][-1 * i]), i)
-                self.sprites.trains[route.id].append(Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id][-1 * i]), self.clock, self, direction=-1))
+                self.sprites.trains[route.id].append(Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id][-1 + -1 * i]), self.clock, self, direction=-1))
 
     def get_next_station(self, route, station, direction):
         ind = self.routes[route.id].index(station.id)
         direction = direction if 0 <= ind + direction < len(self.routes[route.id]) else -1 * direction
         return models.Station.get_by_id(self.routes[route.id][direction + ind]), direction
 
-    def build_obj(self):
-        self.session.cash_amount -= self.build_cost
-        self.build_cost = 0
-        self.session.meta_data['lines_len'] += self.new_distance
-        self.new_distance = 0
-        self.session.save()
-        self.session.load_data()
+    def build_obj(self, action_data):
+        if self.build_cost <= self.session.cash_amount:
+            print(2)
+            self.session.cash_amount -= self.build_cost
+            self.build_cost = 0
+            self.session.meta_data['lines_len'] += self.new_distance
+            self.new_distance = 0
+            self.session.save()
+            self.session.load_data()
+            return True
+        else:
+            action_data.clear(True, True)
+            return False
 
     draw_objects = lambda self: [obj.draw() for obj in self.draw_objects_array]
 
@@ -600,8 +727,6 @@ class Route(pygame.sprite.Sprite):
         delta = 0
         x, y, x1, y1 = self.obj.start.x, self.obj.start.y, self.obj.end.x, self.obj.end.y
 
-        print(self.route.lines_queue, self.route.lines_queue.__class__)
-        print(models.Route.get_by_id(self.route.id))
         line_routes = list(self.obj.routes)
         line_routes_len = len(line_routes)
 
@@ -635,10 +760,12 @@ class Train(pygame.sprite.Sprite):
 
         self.next_station, self.direction = session.get_next_station(route, station, direction)
         self.station = station
-        self.pos = (self.station.x, self.station.y)
+        self.pos = (station.x, station.y)
         self.vx, self.vy = 0, 0
         self.collided = None
         self.collided_station = None
+
+        self.attempt = 1
 
         self.draw()
 
@@ -650,21 +777,31 @@ class Train(pygame.sprite.Sprite):
         pygame.draw.circle(self.image, pygame.Color("black"), (6, 6), 5, 1)
 
     def update(self, time_delta, game_time):
-        self.rect.x += int(self.vx * time_delta)
-        self.rect.y += int(self.vy * time_delta)
 
-        bp = pygame.sprite.spritecollideany(self, self.session.break_points_group)
-        s = pygame.sprite.spritecollideany(self, self.session.stations_group)
+        if self.clock.mode == TIME_MODE.SLOW:
 
-        if bp or s:
-            if s and s != self.collided and self.collided_station != s:
-                self.rect.x, self.rect.y = s.rect.x + 4, s.rect.y + 4
-                self.station = s.obj
-                self.next_station, self.direction = self.session.get_next_station(self.route, s.obj, self.direction)
-                self.vx, self.vy = s.directions[self.next_station.id]
-                self.collided_station = s
-                self.collided = s
-            elif bp and bp != self.collided:
-                self.rect.x, self.rect.y = bp.rect.x - 4, bp.rect.y - 4
-                self.vx, self.vy = bp.directions[self.next_station.id]
-                self.collided = bp
+            self.rect.x += int(self.vx * time_delta)
+            self.rect.y += int(self.vy * time_delta)
+
+            bp = pygame.sprite.spritecollideany(self, self.session.break_points_group)
+            s = pygame.sprite.spritecollideany(self, self.session.stations_group)
+
+            if bp or s:
+                if s and s != self.collided and self.collided_station != s:
+                    self.rect.x, self.rect.y = s.rect.x + 4, s.rect.y + 4
+                    self.next_station, self.direction = self.session.get_next_station(self.route, s.obj, self.direction)
+                    if self.next_station.id in s.directions:
+                        self.vx, self.vy = s.directions[self.next_station.id]
+                    else:
+                        lst = [abs(i - self.next_station.id) for i in s.directions.keys()]
+                        self.vx, self.vy = s.directions[list(s.directions.keys())[lst.index(min(lst))]]
+                    self.collided_station = s
+                    self.collided = s
+                elif bp and bp != self.collided:
+                    self.rect.x, self.rect.y = bp.rect.x - 4, bp.rect.y - 4
+                    if self.next_station.id in bp.directions:
+                        self.vx, self.vy = bp.directions[self.next_station.id]
+                    else:
+                        lst = [abs(i - self.next_station.id) for i in bp.directions.keys()]
+                        self.vx, self.vy = bp.directions[list(bp.directions.keys())[lst.index(min(lst))]]
+                    self.collided = bp
