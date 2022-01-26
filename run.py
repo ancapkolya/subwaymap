@@ -206,6 +206,8 @@ def create_route_fr(btn, event=None, commit=False):
         [obj.save() for obj in action_data.objects]
         SESSION.sprites.routes.extend(action_data.sprites)
         SESSION.update_routes_map()
+        SESSION.economics_core.update_economics_properties()
+        SESSION.save()
     else:
         cond = False
         if len(action_data.clicks) > 0:
@@ -304,13 +306,6 @@ def init_game_window():
     text_render.add_text_stream(screen, 10, 195, 15, func=lambda: f'exp./day: {SESSION.economics_core.daily_expenses}', bold=True)
     text_render.add_text_stream(screen, 155, 195, 15, func=lambda: f'rev./day: {SESSION.economics_core.daily_revenue}', bold=True)
 
-    '''speed_1 = core.Button(relative_rect=pygame.Rect((10, 195), (85, 30)), text='6min/day', manager=game_ui_manager,
-                          on_click=lambda self, event: change_time_mode(self, event, 1))
-    speed_2 = core.Button(relative_rect=pygame.Rect((105, 195), (85, 30)), text='24sec/day', manager=game_ui_manager,
-                          on_click=lambda self, event: change_time_mode(self, event, 2))
-    speed_3 = core.Button(relative_rect=pygame.Rect((200, 195), (85, 30)), text='1sec/day', manager=game_ui_manager,
-                          on_click=lambda self, event: change_time_mode(self, event, 3))'''
-
     text_render.add_text(screen, 10, 240, 15, 'clocks', True)
     text_render.add_text_stream(screen, 155, 275, 15, func=clock.get_str_datetime, bold=True)
 
@@ -343,19 +338,29 @@ def init_game_window():
         self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+65, self.y+65+d), (20, 20)), text='-', manager=self.ui_manager, on_click=lambda *args: change_train_n(obj, -1)))
         self.auto_text_render.add_text_stream(self.screen, self.x+90, self.y+65+d, 15, func=lambda: f'{obj.train_n}/{obj.max_n}', bold=True)
         self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+125, self.y+65+d), (20, 20)), text='+', manager=self.ui_manager, on_click=lambda *args: change_train_n(obj, +1)))
-        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+160, self.y+65+d), (55, 20)), text='stats', manager=self.ui_manager, on_click=lambda *args: 0))
+        self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+160, self.y+65+d), (55, 20)), text='stats', manager=self.ui_manager, on_click=lambda *args: show_line_stats(obj)))
         self.add_ui(core.Button(relative_rect=pygame.Rect((self.x+225, self.y+65+d), (55, 20)), text='del', manager=self.ui_manager, on_click=lambda *args: delete_route(obj)))
 
         def change_train_n(obj, c):
             if 0 <= obj.train_n + c <= obj.max_n:
                 obj.train_n += c
                 obj.save()
+                SESSION.economics_core.update_economics_properties()
                 SESSION.create_trains()
+                SESSION.save()
 
         def delete_route(obj):
             obj.delete_instance()
             SESSION.update_routes_map()
             SESSION.create_trains()
+            SESSION.economics_core.update_economics_properties()
+            SESSION.save()
+
+        def show_line_stats(obj):
+            def draw_func(screen):
+                core.create_text(screen, 10, 50, 15, f'пассажиропоток: {SESSION.economics_core.routes_data[str(obj.id)][2]}')
+
+            core.MessageBox(warning_sprites, manager=game_ui_manager, draw_func=draw_func)
 
     routes_list = core.RoutesPaginator(
         screen,
@@ -391,7 +396,9 @@ def game_window_update(self, *args, **kwargs):
     SESSION.draw_objects()
     SESSION.economics_core.update(args[-1])
     SESSION.events_core.update(args[-1])
+    self.groups[3].update(*args)
     self.groups[4].update(*args)
+    print(SESSION.session.meta_data['station_flow'])
 
 game_window = core.Window(
     init_func=init_game_window,

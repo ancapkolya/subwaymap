@@ -158,7 +158,9 @@ class EventCore:
 
     events_queue = list()
 
-    init = lambda self, session: self.__setattr__('session', session)
+    def init(self, session):
+        self.session = session
+        self.events_queue = list()
 
     def update(self, game_delta):
         for event in self.events_queue.copy():
@@ -189,8 +191,10 @@ class EconomicsCore:
     stations_data = dict()
     routes_data = dict()
 
-
-    init = lambda self, session: self.__setattr__('session', session)
+    def init(self, session):
+        self.session = session
+        self.stations_data = dict()
+        self.routes_data = dict()
 
     def init(self, session):
 
@@ -215,8 +219,8 @@ class EconomicsCore:
                 self.session.session.cash_amount += self.cash_delta
                 self.cash_delta = 0
 
-    def update_economics_properties(self):
-        self.count_people_flow()
+    def update_economics_properties(self, recount=True):
+        self.count_people_flow(recount)
         self.update_expenses()
         self.update_revenues()
 
@@ -229,52 +233,77 @@ class EconomicsCore:
 
     def update_revenues(self):
         if self.session:
-            self.daily_revenue = sum([i[0] for i in self.routes_data.values()]) * self.ticket_cost / 250 / self.session.session.level
+            self.daily_revenue = sum([i[2] for i in self.routes_data.values()]) * self.ticket_cost / 250 / self.session.session.level
             self.second_revenues = self.daily_revenue / 86400
             self.daily_revenue = round(self.daily_revenue, 2)
 
-    def count_people_flow(self):
+    def count_people_flow(self, recount=True):
 
-        if len([i for i in ['station_data', 'routes_data'] if i in self.session.session.meta_data]) == 2:
+        if len([i for i in ['station_data', 'routes_data', 'station_flow'] if i in self.session.session.meta_data]) == 3 and not recount:
 
             self.stations_data = self.session.session.meta_data['station_data']
             self.routes_data = self.session.session.meta_data['routes_data']
+            self.station_flow = self.session.session.meta_data['station_flow']
 
         else:
 
             map = self.session.get_map().map
 
-            # station flow cycle
+            '''# station flow cycle
+            self.stations_data = dict()
+            self.transfer_dict = dict()
+            for station in self.session.session.stations:
+                s_routes = list()
+                for i in station.get_lines():
+                    for j in i.routes:
+                        s_routes.append(j.id)
+                for i in s_routes:
+                    
+                self.stations_data[station.id] = [0, list(set(s_routes))]
+                column_n, row_n = [i - 3 if i > 3 else 0 for i in self.get_cell(station.x - 300, station.y - 300)]
+                for row in range(row_n, row_n + 7, 1):
+                    for column in range(column_n, column_n + 7, 1):
+                        self.stations_data[station.id][0] += int(map[column, row])
+                if self.stations_data[station.id][1] != 0:
+                    self.stations_data[station.id][0] //= 10'''
+
+            if 'station_flow' not in self.__dict__:
+                self.station_flow = dict()
             self.stations_data = dict()
             for station in self.session.session.stations:
                 s_routes = list()
                 for i in station.get_lines():
                     for j in i.routes:
                         s_routes.append(j.id)
-                self.stations_data[station.id] = [0, list(set(s_routes))]
+                self.stations_data[str(station.id)] = [0, list(set(s_routes))]
                 column_n, row_n = [i - 3 if i > 3 else 0 for i in self.get_cell(station.x-300, station.y-300)]
                 for row in range(row_n, row_n + 7, 1):
                     for column in range(column_n, column_n + 7, 1):
-                        self.stations_data[station.id][0] += int(map[column, row])
-                if self.stations_data[station.id][1] != 0:
-                    self.stations_data[station.id][0] //= 10
-
+                        self.stations_data[str(station.id)][0] += int(map[column, row])
+                if self.stations_data[str(station.id)][1] != 0:
+                    self.stations_data[str(station.id)][0] //= 10
+                if station.id not in self.station_flow:
+                    self.station_flow[str(station.id)] = 0
             # routes flow cycle
             self.routes_data = dict()
             for route in self.session.session.routes:
-                self.routes_data[route.id] = [0, set()]
+                self.routes_data[str(route.id)] = [0, set(), 0, 0]
                 for i in self.session.routes[route.id]:
-                    self.routes_data[route.id][0] += self.stations_data[i][0] // len(self.stations_data[i][1])
-                    if len(self.stations_data[i][1]) > 1:
-                        self.routes_data[route.id][1].add(i)
-                self.routes_data[route.id][1] = list(self.routes_data[route.id][1])
-                transfer_volume = self.routes_data[route.id][0] * 0.5
-                station_flow_volume = sum([self.stations_data[i][0] for i in self.routes_data[route.id][1]])
-                for i in self.routes_data[route.id][1]:
-                    self.stations_data[i][0] += int(self.stations_data[i][0] / station_flow_volume * transfer_volume * random.randrange(7, 13, 1) / 10)
+                    self.routes_data[str(route.id)][0] += self.stations_data[str(i)][0] // len(self.stations_data[str(i)][1])
+                    if len(self.stations_data[str(i)][1]) > 1:
+                        self.routes_data[str(route.id)][1].add(i)
+                self.routes_data[str(route.id)][1] = list(self.routes_data[str(route.id)][1])
+                transfer_volume = self.routes_data[str(route.id)][0] * 0.5
+                station_flow_volume = sum([self.stations_data[str(i)][0] for i in self.routes_data[str(route.id)][1]])
+                for i in self.routes_data[str(route.id)][1]:
+                    self.stations_data[str(i)][0] += int(self.stations_data[str(i)][0] / station_flow_volume * transfer_volume * random.randrange(7, 13, 1) / 10)
+                trains_max, line_max = route.train_n * 15, self.routes_data[str(route.id)][0]
+                self.routes_data[str(route.id)][2] = line_max if trains_max >= line_max else trains_max
+                self.routes_data[str(route.id)][3] = trains_max / line_max
 
             self.session.session.meta_data['station_data'] = self.stations_data
             self.session.session.meta_data['routes_data'] = self.routes_data
+            self.session.session.meta_data['station_flow'] = self.station_flow
 
     get_cell = lambda self, *pos: [i // 10 for i in pos]
 
@@ -290,9 +319,6 @@ class SessionSprites:
 
 class Session:
 
-    sprites = SessionSprites()
-    economics_core = EconomicsCore()
-    events_core = EventCore()
     routes = dict()
 
     build_cost = 0
@@ -313,6 +339,10 @@ class Session:
 
         self.session.load_data()
         self.session.check_meta()
+
+        self.sprites = SessionSprites()
+        self.economics_core = EconomicsCore()
+        self.events_core = EventCore()
 
         self.events_core.init(self)
         self.economics_core.init(self)
@@ -350,7 +380,7 @@ class Session:
         self.update_stations_map()
         self.update_routes_map()
         self.create_trains()
-        self.economics_core.update_economics_properties()
+        self.economics_core.update_economics_properties(recount=False)
 
     def update_lines_map(self):
         self.kill_array(self.sprites.breakpoints.values())
@@ -661,6 +691,8 @@ class Station(pygame.sprite.Sprite):
         self.obj = obj
         self.session = session
 
+        self.high_traffic_k = 0
+
         self.image = pygame.Surface((20, 20), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(self.obj.x - 10, self.obj.y - 10, 20, 20)
         pygame.draw.circle(self.image, pygame.Color("white"), (10, 10), 8)
@@ -677,6 +709,26 @@ class Station(pygame.sprite.Sprite):
 
     def count_traffic(self):
         x0, y0 = self.rect.x if self.rect.x else 1
+
+    def update(self, time_delta, game_delta):
+        current_k = self.session.session.meta_data['station_flow'][str(self.obj.id)]
+        if current_k > 5:
+            pygame.draw.circle(self.image, pygame.Color('yellow' if current_k < 10 else 'red'), (10, 10), 6)
+        elif current_k > 20:
+            self.session.end_game()
+        delta_k = 0
+        routes = []
+        for r in self.obj.get_lines():
+            routes.extend(r.routes)
+        for r in [i.id for i in routes]:
+            if str(r) in self.session.session.meta_data['routes_data']:
+                r_k = self.session.session.meta_data['routes_data'][str(r)][3]
+                if r_k < 1:
+                    delta_k += 1 - r_k
+                else:
+                    delta_k -= 0.25
+        self.session.session.meta_data['station_flow'][str(self.obj.id)] += self.session.session.meta_data['station_data'][str(self.obj.id)][0] * 0.000000058 * game_delta.seconds
+
 
 
 class Line(pygame.sprite.Sprite):
