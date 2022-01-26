@@ -81,7 +81,7 @@ def create_station(btn, event=None, commit=False):
                 y=action_data.clicks[-1][1]
             )
             SESSION.build_cost = 100
-            action_data.sprites.append(core.Station(stations_sprites, SESSION, station))
+            action_data.sprites.append(core.Station(stations_sprites, game_ui_manager, warning_sprites, SESSION, station))
             action_data.objects.append(station)
 
     return cond
@@ -398,7 +398,6 @@ def game_window_update(self, *args, **kwargs):
     SESSION.events_core.update(args[-1])
     self.groups[3].update(*args)
     self.groups[4].update(*args)
-    print(SESSION.session.meta_data['station_flow'])
 
 game_window = core.Window(
     init_func=init_game_window,

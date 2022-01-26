@@ -425,7 +425,7 @@ class Session:
     def update_stations_map(self):
         self.sprites.stations = self.kill_array(self.sprites.stations)
         for station in self.session.stations:
-            sprite = Station(self.stations_group, self, station)
+            sprite = Station(self.stations_group, self.ui_manager, self.warning_sprites, self, station)
             self.sprites.stations.append(sprite)
             sprite.update_routes()
 
@@ -521,15 +521,23 @@ class Manager(pygame_gui.UIManager):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.objects, self.update_objects = list(), list()
+        self.objects = list()
 
     def process_events(self, event: pygame.event.Event):
         super().process_events(event)
-        for i, obj in enumerate(self.ui_group):
-            if event.type == pygame.USEREVENT:
-                if event.user_type == pygame_gui.UI_BUTTON_PRESSED:
+        if event.type == pygame.USEREVENT:
+            print(event)
+            if event.user_type == pygame_gui.UI_BUTTON_PRESSED:
+                for obj in self.ui_group:
                     if event.ui_element == obj:
                         obj.on_click(event)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            for obj in self.objects:
+                if obj.rect.collidepoint(*event.pos):
+                    obj.on_click(event)
+
+    add_to_handle = lambda self, obj: self.objects.append(obj)
+
 
 
 class Button(pygame_gui.elements.UIButton, OnClickMixin):
@@ -686,7 +694,7 @@ class BreakPoint(pygame.sprite.Sprite):
 
 class Station(pygame.sprite.Sprite):
 
-    def __init__(self, group, session, obj):
+    def __init__(self, group, manager, message_group, session, obj):
         super().__init__(group)
         self.obj = obj
         self.session = session
@@ -699,6 +707,11 @@ class Station(pygame.sprite.Sprite):
         pygame.draw.circle(self.image, pygame.Color("black"), (10, 10), 8, 2)
 
         self.update_routes()
+
+        manager.add_to_handle(self)
+
+        self.manager = manager
+        self.message_group = message_group
 
     def update_routes(self):
         self.directions = dict()
@@ -729,6 +742,12 @@ class Station(pygame.sprite.Sprite):
                     delta_k -= 0.25
         self.session.session.meta_data['station_flow'][str(self.obj.id)] += self.session.session.meta_data['station_data'][str(self.obj.id)][0] * 0.000000058 * game_delta.seconds
 
+    def on_click(self, event):
+
+        def draw_func(screen):
+            create_text(screen, 10, 50, 15, f'пассажиропоток станции: {self.session.session.meta_data["station_data"][str(self.obj.id)][0]}')
+
+        MessageBox(self.message_group, manager=self.manager, draw_func=draw_func)
 
 
 class Line(pygame.sprite.Sprite):
