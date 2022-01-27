@@ -18,26 +18,28 @@ screen.fill('white')
 # actions
 action_data = core.ActionData()
 
+GAME_DATA = core.load_game_data()
 SESSION = None
 
 
 # GAME WINDOW
 # creating station
 def create_station_handler(self, event):
-    action_data.clear(True, True)
+    if not SESSION.is_ended:
+        action_data.clear(True, True)
 
-    action_data.on_click_func = create_station
-    action_data.status = 'creating_station'
+        action_data.on_click_func = create_station
+        action_data.status = 'creating_station'
 
-    self.set_text('accept')
-    self.on_click_func = accept_station_handler
+        self.set_text('accept')
+        self.on_click_func = accept_station_handler
 
-    def clear_func():
-        SESSION.build_cost = 0
-        self.reset_text()
-        self.on_click_func = create_station_handler
+        def clear_func():
+            SESSION.build_cost = 0
+            self.reset_text()
+            self.on_click_func = create_station_handler
 
-    action_data.clear_func = clear_func
+        action_data.clear_func = clear_func
 
 
 def accept_station_handler(self, event):
@@ -60,6 +62,8 @@ def create_station(btn, event=None, commit=False):
             action_data.objects[-1].save()
             SESSION.sprites.stations.append(action_data.sprites[-1])
             SESSION.build_obj(action_data)
+            SESSION.economics_core.update_economics_properties()
+            action_data.sprites[-1].is_built = True
         else:
             core.MessageBox(
                 warning_sprites,
@@ -81,7 +85,9 @@ def create_station(btn, event=None, commit=False):
                 y=action_data.clicks[-1][1]
             )
             SESSION.build_cost = 100
-            action_data.sprites.append(core.Station(stations_sprites, game_ui_manager, warning_sprites, SESSION, station))
+            sprite = core.Station(stations_sprites, game_ui_manager, warning_sprites, SESSION, station)
+            sprite.is_built = False
+            action_data.sprites.append(sprite)
             action_data.objects.append(station)
 
     return cond
@@ -89,20 +95,21 @@ def create_station(btn, event=None, commit=False):
 
 # creating lines
 def create_line_handler(self, event):
-    action_data.clear(True, True)
+    if not SESSION.is_ended:
+        action_data.clear(True, True)
 
-    action_data.on_click_func = create_line_fr
-    action_data.status = 'creating_line'
+        action_data.on_click_func = create_line_fr
+        action_data.status = 'creating_line'
 
-    self.set_text('accept')
-    self.on_click_func = accept_line_handler
+        self.set_text('accept')
+        self.on_click_func = accept_line_handler
 
-    def clear_func():
-        SESSION.build_cost = 0
-        self.reset_text()
-        self.on_click_func = create_line_handler
+        def clear_func():
+            SESSION.build_cost = 0
+            self.reset_text()
+            self.on_click_func = create_line_handler
 
-    action_data.clear_func = clear_func
+        action_data.clear_func = clear_func
 
 
 def accept_line_handler(self, event):
@@ -170,22 +177,23 @@ def create_line_fr(btn, event=None, commit=False):
 
 # creating lines
 def create_route_handler(self, event):
-    action_data.clear(True, True)
+    if not SESSION.is_ended:
+        action_data.clear(True, True)
 
-    action_data.on_click_func = create_route_fr
-    action_data.status = 'creating_route'
+        action_data.on_click_func = create_route_fr
+        action_data.status = 'creating_route'
 
-    self.set_text('accept')
-    self.on_click_func = accept_route_handler
+        self.set_text('accept')
+        self.on_click_func = accept_route_handler
 
-    def clear_func():
-        if len(action_data.objects) > 0:
-            for obj in action_data.objects:
-                obj.delete()
-        self.reset_text()
-        self.on_click_func = create_route_handler
+        def clear_func():
+            if len(action_data.objects) > 0:
+                for obj in action_data.objects:
+                    obj.delete()
+            self.reset_text()
+            self.on_click_func = create_route_handler
 
-    action_data.clear_func = clear_func
+        action_data.clear_func = clear_func
 
 
 def accept_route_handler(self, event):
@@ -254,7 +262,7 @@ def create_route_fr(btn, event=None, commit=False):
 
 
 # UI
-game_ui_manager = core.Manager((width, height), 'data/styles.json')
+game_ui_manager = core.Manager((width, height), 'data/styles.json', action_data=action_data)
 
 
 # Groups
@@ -283,18 +291,19 @@ def init_game_window():
     core.Button(relative_rect=pygame.Rect((10, 80), (135, 30)), text='save', manager=game_ui_manager,
                 on_click=lambda *args: SESSION.save())
     core.Button(relative_rect=pygame.Rect((155, 80), (135, 30)), text='empty', manager=game_ui_manager,
-                on_click=lambda: print(1))
+                on_click=lambda *args: 0)
 
     # Clocks
     def change_time_mode(self, event, mode=0):
-        [obj.reset_text() for obj in [pause, speed_1, speed_2, speed_3]]
-        clock.set_mode(mode)
-        self.set_text('chosen')
+        if not SESSION.is_ended:
+            [obj.reset_text() for obj in [pause, speed_1, speed_2, speed_3]]
+            clock.set_mode(mode)
+            self.set_text('chosen')
 
-        if clock.mode != core.TIME_MODE.SLOW and clock.mode != core.TIME_MODE.PAUSE:
-            [SESSION.kill_array(array) for array in SESSION.sprites.trains.values()]
-        elif clock.mode == core.TIME_MODE.SLOW:
-            SESSION.create_trains()
+            if clock.mode != core.TIME_MODE.SLOW and clock.mode != core.TIME_MODE.PAUSE:
+                [SESSION.kill_array(array) for array in SESSION.sprites.trains.values()]
+            elif clock.mode == core.TIME_MODE.SLOW:
+                SESSION.create_trains()
 
 
     core.MapSprite(all_sprites, obj=SESSION.get_map())
@@ -327,7 +336,7 @@ def init_game_window():
     core.Button(relative_rect=pygame.Rect((10, 440), (135, 30)), text='create route', manager=game_ui_manager,
                 on_click=create_route_handler)
     core.Button(relative_rect=pygame.Rect((155, 440), (135, 30)), text='empty', manager=game_ui_manager,
-                on_click=create_line_handler)
+                on_click=lambda *args: 0)
 
     def route_draw_func(self, obj, i):
         obj.load_data()
@@ -391,6 +400,10 @@ def game_window_process_events(self, event):
             if 300 < event.pos[0] < 1800 and 0 < event.pos[1] < 750:
                 action_data.clicks.append(event.pos)
         action_data.on_click(event)
+    elif event.type == pygame.KEYDOWN:
+        keys = [i + 1 for i, key in  enumerate(pygame.key.get_pressed()) if key]
+        if set(keys) == {23, 225}:
+            SESSION.save()
 
 def game_window_update(self, *args, **kwargs):
     SESSION.draw_objects()
@@ -423,12 +436,13 @@ def init_start_window():
 
     def load_game(pk):
         global SESSION
-        SESSION = core.Session(pk, clock)
+        SESSION = core.Session(lambda *args: game_loop.set_window(start_window), pk, clock)
+        GAME_DATA.data['previous_game'] = SESSION.session.id
         game_loop.set_window(game_window)
 
     start_text_render.add_text(screen, 732, 280, 50, 'subwaymap', True)
 
-    core.Button(relative_rect=pygame.Rect((725, 350), (195, 50)), text='load previous', manager=start_ui_manager, on_click=lambda self, event: load_game(-1))
+    core.Button(relative_rect=pygame.Rect((725, 350), (195, 50)), text='load previous', manager=start_ui_manager, on_click=lambda self, event: load_game(GAME_DATA.data['previous_game'] if 'previous_game' in GAME_DATA.data else -1))
     core.Button(relative_rect=pygame.Rect((925, 350), (145, 50)), text='new game', manager=start_ui_manager, on_click=lambda self, event: game_loop.set_window(new_game_window))
 
     start_text_render.add_text(screen, 35, 410, 20, 'games', True)
@@ -445,12 +459,18 @@ def init_start_window():
             else:
                 break
 
-    core.ImageSprite(start_sprites, 'logo.png', 725, 100, 350, 167)
+    core.ImageSprite(start_sprites, 'logo.png', 720, 70, 350, 213)
 
+
+def start_window_process_events(self, event):
+    if event.type == pygame.KEYDOWN:
+        keys = [i + 1 for i, key in  enumerate(pygame.key.get_pressed()) if key]
+        if set(keys) == {18, 225}:
+            game_loop.set_window(new_game_window)
 
 start_window = core.Window(
     init_func=init_start_window,
-    process_events_func=lambda *args: 0,
+    process_events_func=start_window_process_events,
     auto_text_renders=[start_text_render],
     groups=[start_sprites],
     ui=start_ui_manager,
@@ -475,7 +495,8 @@ def create_and_run_game(map_obj, level):
         level=level
     )
     session.save()
-    SESSION = core.Session(pk=session.id, clock=clock)
+    SESSION = core.Session(lambda *args: game_loop.set_window(start_window), pk=session.id, clock=clock)
+    GAME_DATA.data['previous_game'] = SESSION.session.id
     game_loop.set_window(game_window)
 
 
@@ -520,7 +541,7 @@ new_game_window = core.Window(
 
 
 # GAME LOOP
-game_loop = core.GameLoop(screen, clock)
+game_loop = core.GameLoop(screen, clock, GAME_DATA)
 game_loop.set_window(start_window)
 
 

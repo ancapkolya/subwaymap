@@ -35,6 +35,14 @@ class JsonModel(BaseModel):
 
 
 # models
+class GameData(JsonModel):
+
+    data = TextField(default={})
+
+    class Meta:
+        json_fields = ['data']
+
+
 class GameSession(JsonModel):
 
     score = IntegerField(default=0)
@@ -122,4 +130,4 @@ get_route_color = lambda pk: len(GameSession.get_by_id(pk).routes) % 7
 
 # creating models
 if __name__ == '__main__':
-    connection.create_tables([GameSession, Line, Station, Route])
+    connection.create_tables([GameData, GameSession, Line, Station, Route])

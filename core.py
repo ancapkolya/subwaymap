@@ -57,7 +57,7 @@ def create_text(screen, x, y, size, text='', bold=False):
 # mixins
 class OnClickMixin:
 
-    def on_click(self, event):
+    def on_click(self, event, *args):
         if 'on_click_func' in self.__dict__:
             self.on_click_func(self, event)
 
@@ -66,9 +66,24 @@ class OnClickMixin:
 class EmptyClass: pass
 
 
+def load_game_data():
+    objects = list(models.GameData.select())
+    if objects:
+        object = objects[0]
+        object.load_data()
+        return object
+    else:
+        object = models.GameData()
+        object.save()
+        object.load_data()
+        return object
+
+
+
 class GameLoop:
 
-    def __init__(self, screen, clock):
+    def __init__(self, screen, clock, gamedata):
+        self.gamedata = gamedata
         self.screen = screen
         self.window = None
         self.clock = clock
@@ -86,6 +101,7 @@ class GameLoop:
             self.window.draw()
             self.window.update(time_delta, game_delta)
             pygame.display.flip()
+        self.gamedata.save()
         models.connection.close()
         pygame.quit()
 
@@ -138,6 +154,7 @@ class Window:
         self.clock = None
         for group in self.groups:
             for sprite in group:
+                print(sprite)
                 sprite.kill()
         for sprite in self.ui.ui_group:
             sprite.kill()
@@ -214,10 +231,13 @@ class EconomicsCore:
 
     def update(self, game_delta):
         if self.session:
-            self.cash_delta += (self.second_revenues - self.second_expenses) * game_delta.seconds
-            if abs(self.cash_delta) >= 1:
-                self.session.session.cash_amount += self.cash_delta
-                self.cash_delta = 0
+            if self.session.session.cash_amount >= 0:
+                self.cash_delta += (self.second_revenues - self.second_expenses) * game_delta.seconds
+                if abs(self.cash_delta) >= 1:
+                    self.session.session.cash_amount += self.cash_delta
+                    self.cash_delta = 0
+            else:
+                self.session.end_game('у вас закончились деньги')
 
     def update_economics_properties(self, recount=True):
         self.count_people_flow(recount)
@@ -227,7 +247,7 @@ class EconomicsCore:
     def update_expenses(self):
         if self.session:
             self.second_expenses = self.session.session.meta_data['lines_len'] * 0.00000015 + sum(
-                [models.Route.get_by_id(route).train_n * 0.0000001 for route in self.session.routes])
+                [models.Route.get_by_id(route).train_n * 0.0000005 for route in self.session.routes])
             self.daily_expenses = self.second_expenses * 3600 * 24
             self.daily_expenses = round(self.daily_expenses, 2)
 
@@ -249,24 +269,6 @@ class EconomicsCore:
 
             map = self.session.get_map().map
 
-            '''# station flow cycle
-            self.stations_data = dict()
-            self.transfer_dict = dict()
-            for station in self.session.session.stations:
-                s_routes = list()
-                for i in station.get_lines():
-                    for j in i.routes:
-                        s_routes.append(j.id)
-                for i in s_routes:
-                    
-                self.stations_data[station.id] = [0, list(set(s_routes))]
-                column_n, row_n = [i - 3 if i > 3 else 0 for i in self.get_cell(station.x - 300, station.y - 300)]
-                for row in range(row_n, row_n + 7, 1):
-                    for column in range(column_n, column_n + 7, 1):
-                        self.stations_data[station.id][0] += int(map[column, row])
-                if self.stations_data[station.id][1] != 0:
-                    self.stations_data[station.id][0] //= 10'''
-
             if 'station_flow' not in self.__dict__:
                 self.station_flow = dict()
             self.stations_data = dict()
@@ -282,8 +284,9 @@ class EconomicsCore:
                         self.stations_data[str(station.id)][0] += int(map[column, row])
                 if self.stations_data[str(station.id)][1] != 0:
                     self.stations_data[str(station.id)][0] //= 10
-                if station.id not in self.station_flow:
+                if str(station.id) not in self.station_flow:
                     self.station_flow[str(station.id)] = 0
+
             # routes flow cycle
             self.routes_data = dict()
             for route in self.session.session.routes:
@@ -297,7 +300,7 @@ class EconomicsCore:
                 station_flow_volume = sum([self.stations_data[str(i)][0] for i in self.routes_data[str(route.id)][1]])
                 for i in self.routes_data[str(route.id)][1]:
                     self.stations_data[str(i)][0] += int(self.stations_data[str(i)][0] / station_flow_volume * transfer_volume * random.randrange(7, 13, 1) / 10)
-                trains_max, line_max = route.train_n * 15, self.routes_data[str(route.id)][0]
+                trains_max, line_max = route.train_n * 30, self.routes_data[str(route.id)][0]
                 self.routes_data[str(route.id)][2] = line_max if trains_max >= line_max else trains_max
                 self.routes_data[str(route.id)][3] = trains_max / line_max
 
@@ -324,7 +327,9 @@ class Session:
     build_cost = 0
     new_distance = 0
 
-    def __init__(self, pk=-1, clock=None):
+    is_ended = False
+
+    def __init__(self, exit_callback, pk=-1, clock=None):
         if pk > -1:
             session = models.GameSession.get_by_id(pk)
             if session:
@@ -347,11 +352,26 @@ class Session:
         self.events_core.init(self)
         self.economics_core.init(self)
 
+        self.exit_callback = exit_callback
+
     def save(self):
         self.session.datetime = self.clock.datetime
         print(self.session.meta_data)
         self.session.save()
         self.session.load_data()
+
+    def end_game(self, text='вы проиграли'):
+
+        self.is_ended = True
+
+        self.save()
+        self.clock.set_mode(0)
+
+        def draw_func(screen):
+            create_text(screen, 10, 10, 15, text, True)
+            Button(relative_rect=pygame.Rect((760, 330), (80, 30)), text='quit', manager=self.ui_manager, on_click=self.exit_callback)
+
+        MessageBox(self.warning_sprites, manager=self.ui_manager, draw_func=draw_func, permanent=True)
 
     def load_sprites(self, stations_group, lines_group, routes_group, trains_group, break_points_group, warning_sprites, ui_manager, routes_list_update_callback, draw_objects_array):
         self.break_points_group = break_points_group
@@ -520,18 +540,20 @@ class WrappedClock:
 class Manager(pygame_gui.UIManager):
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self.objects = list()
+        if 'action_data' in kwargs:
+            self.action_data = kwargs['action_data']
+            del kwargs['action_data']
+        super().__init__(*args, **kwargs)
 
     def process_events(self, event: pygame.event.Event):
         super().process_events(event)
         if event.type == pygame.USEREVENT:
-            print(event)
             if event.user_type == pygame_gui.UI_BUTTON_PRESSED:
                 for obj in self.ui_group:
                     if event.ui_element == obj:
                         obj.on_click(event)
-        elif event.type == pygame.MOUSEBUTTONDOWN:
+        elif 'action_data' in self.__dict__ and event.type == pygame.MOUSEBUTTONDOWN and self.action_data.status == 'watching':
             for obj in self.objects:
                 if obj.rect.collidepoint(*event.pos):
                     obj.on_click(event)
@@ -555,7 +577,7 @@ class Button(pygame_gui.elements.UIButton, OnClickMixin):
 # sprites
 class MessageBox(pygame.sprite.Sprite):
 
-    def __init__(self, *group, manager, text=None, draw_func=None):
+    def __init__(self, *group, manager, text=None, draw_func=None, permanent=False):
         super().__init__(*group)
         self.image = pygame.Surface((300, 200), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(750, 300, 300, 200)
@@ -564,10 +586,14 @@ class MessageBox(pygame.sprite.Sprite):
             create_text(self.image, 10, 50, 15, text, True)
         else:
             draw_func(self.image)
-        Button(relative_rect=pygame.Rect((760, 310), (80, 30)), text='close', manager=manager, on_click=self.kill)
+        if not permanent:
+            self.btn = Button(relative_rect=pygame.Rect((760, 310), (80, 30)), text='close', manager=manager, on_click=self.kill)
 
-    def kill(self, btn, event):
-        btn.kill()
+    def kill(self, *args):
+        if len(args) == 2:
+            args[0].kill()
+        elif 'btn' in self.__dict__:
+            self.btn.kill()
         super().kill()
 
     def update(self, way):
@@ -700,6 +726,7 @@ class Station(pygame.sprite.Sprite):
         self.session = session
 
         self.high_traffic_k = 0
+        self.is_built = True
 
         self.image = pygame.Surface((20, 20), pygame.SRCALPHA, 32)
         self.rect = pygame.Rect(self.obj.x - 10, self.obj.y - 10, 20, 20)
@@ -724,23 +751,27 @@ class Station(pygame.sprite.Sprite):
         x0, y0 = self.rect.x if self.rect.x else 1
 
     def update(self, time_delta, game_delta):
-        current_k = self.session.session.meta_data['station_flow'][str(self.obj.id)]
-        if current_k > 5:
-            pygame.draw.circle(self.image, pygame.Color('yellow' if current_k < 10 else 'red'), (10, 10), 6)
-        elif current_k > 20:
-            self.session.end_game()
-        delta_k = 0
-        routes = []
-        for r in self.obj.get_lines():
-            routes.extend(r.routes)
-        for r in [i.id for i in routes]:
-            if str(r) in self.session.session.meta_data['routes_data']:
-                r_k = self.session.session.meta_data['routes_data'][str(r)][3]
-                if r_k < 1:
-                    delta_k += 1 - r_k
-                else:
-                    delta_k -= 0.25
-        self.session.session.meta_data['station_flow'][str(self.obj.id)] += self.session.session.meta_data['station_data'][str(self.obj.id)][0] * 0.000000058 * game_delta.seconds
+        if not self.session.is_ended and self.is_built:
+            current_k = self.session.session.meta_data['station_flow'][str(self.obj.id)]
+            if current_k > 20:
+                self.session.end_game()
+            else:
+                pygame.draw.circle(self.image, pygame.Color('red' if current_k > 10 else 'yellow' if current_k > 5 else 'white'), (10, 10), 6)
+            delta_k = 0
+            routes = []
+            for r in self.obj.get_lines():
+                routes.extend(r.routes)
+            for r in [i.id for i in routes]:
+                if str(r) in self.session.session.meta_data['routes_data']:
+                    r_k = self.session.session.meta_data['routes_data'][str(r)][3]
+                    if r_k < 1:
+                        delta_k += 1 - r_k
+                    else:
+                        delta_k -= 0.25
+            if delta_k > 0:
+                self.session.session.meta_data['station_flow'][str(self.obj.id)] += self.session.session.meta_data['station_data'][str(self.obj.id)][0] * 0.000000058 * game_delta.seconds * delta_k
+            elif current_k > 0:
+                self.session.session.meta_data['station_flow'][str(self.obj.id)] -= 0.000005787 * game_delta.seconds
 
     def on_click(self, event):
 
