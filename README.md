@@ -1,4 +1,4 @@
-![Снимок экрана от 2022-01-27 22-16-40](https://user-images.githubusercontent.com/82755400/151428479-c77d75e2-df54-493e-becd-8554297d4416.png)
+![Снимок экрана от 2022-01-27 22-19-25](https://user-images.githubusercontent.com/82755400/151428725-2de755e2-cf48-43c4-bf75-2bb8dde5fbb0.png)
 # subwaymap
 ## **pygame project**
 ### **modules**
