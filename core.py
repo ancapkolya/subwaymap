@@ -4,7 +4,6 @@ import random
 import sys
 import pygame
 import pygame_gui
-import webbrowser
 
 import map_core
 import models
@@ -361,7 +360,9 @@ class Session:
         self.session.save()
         self.session.load_data()
 
-    def end_game(self, text='вы проиграли'):
+    def end_game(self, text=None):
+        if text is None:
+            text = f'вы проиграли. ваш счет: {round(self.session.score / 1000, 2)}'
 
         self.is_ended = True
 

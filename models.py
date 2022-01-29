@@ -4,7 +4,7 @@ import json
 from peewee import *
 
 
-connection = SqliteDatabase('data.db')
+connection = SqliteDatabase('data/data.db')
 
 
 class BaseModel(Model):

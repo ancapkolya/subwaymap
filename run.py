@@ -3,7 +3,6 @@ import webbrowser
 import pygame
 
 import core
-import map_core
 import models
 
 
