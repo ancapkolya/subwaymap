@@ -1,3 +1,5 @@
+import webbrowser
+
 import pygame
 
 import core
@@ -72,23 +74,25 @@ def create_station(btn, event=None, commit=False):
     else:
         x, y = event.pos
 
-        for s in SESSION.session.stations:
-            if ((s.x - x) ** 2 + (s.y - y) ** 2) ** 0.5 < 30:
-                cond = False
-                break
+        if 400 <= x <= 1700 and 100 <= y <= 650:
 
-        if cond and len(action_data.clicks) > 0 and action_data.status == 'creating_station':
-            action_data.status = 'accepting_station'
-            station = models.Station(
-                game=SESSION.session.id,
-                x=action_data.clicks[-1][0],
-                y=action_data.clicks[-1][1]
-            )
-            SESSION.build_cost = 100
-            sprite = core.Station(stations_sprites, game_ui_manager, warning_sprites, SESSION, station)
-            sprite.is_built = False
-            action_data.sprites.append(sprite)
-            action_data.objects.append(station)
+            for s in SESSION.session.stations:
+                if ((s.x - x) ** 2 + (s.y - y) ** 2) ** 0.5 < 30:
+                    cond = False
+                    break
+
+            if cond and len(action_data.clicks) > 0 and action_data.status == 'creating_station':
+                action_data.status = 'accepting_station'
+                station = models.Station(
+                    game=SESSION.session.id,
+                    x=action_data.clicks[-1][0],
+                    y=action_data.clicks[-1][1]
+                )
+                SESSION.build_cost = 100
+                sprite = core.Station(stations_sprites, game_ui_manager, warning_sprites, SESSION, station)
+                sprite.is_built = False
+                action_data.sprites.append(sprite)
+                action_data.objects.append(station)
 
     return cond
 
@@ -141,7 +145,6 @@ def create_line_fr(btn, event=None, commit=False):
         if len(action_data.clicks) > 0:
             for s in SESSION.sprites.stations:
                 if not cond:
-                    print(s)
                     cond = s.rect.collidepoint(*action_data.clicks[-1])
                 else:
                     break
@@ -279,19 +282,28 @@ warning_sprites = pygame.sprite.Group()
 
 
 # Sprites
+open_guide = lambda *args: webbrowser.open('https://github.com/ancapkolya/subwaymap#readme')
+
 def init_game_window():
 
     # Main
     text_render.add_text(screen, 10, 10, 15, 'Menu', True)
 
+    def save_and_quit(*args):
+        game_loop.set_window(start_window)
+        SESSION.save()
+
+    def show_score(*args):
+        core.MessageBox(warning_sprites, manager=game_ui_manager, text=f'your score: {round(SESSION.session.score / 1000, 2)}')
+
     core.Button(relative_rect=pygame.Rect((10, 40), (135, 30)), text='cancel', manager=game_ui_manager,
                 on_click=lambda *args: action_data.clear(True, True))
     core.Button(relative_rect=pygame.Rect((155, 40), (135, 30)), text='quit', manager=game_ui_manager,
-                on_click=lambda *args: game_loop.set_window(start_window))
-    core.Button(relative_rect=pygame.Rect((10, 80), (135, 30)), text='save', manager=game_ui_manager,
-                on_click=lambda *args: SESSION.save())
-    core.Button(relative_rect=pygame.Rect((155, 80), (135, 30)), text='empty', manager=game_ui_manager,
-                on_click=lambda *args: 0)
+                on_click=save_and_quit)
+    core.Button(relative_rect=pygame.Rect((10, 80), (135, 30)), text='show score', manager=game_ui_manager,
+                on_click=show_score)
+    core.Button(relative_rect=pygame.Rect((155, 80), (135, 30)), text='game guide', manager=game_ui_manager,
+                on_click=open_guide)
 
     # Clocks
     def change_time_mode(self, event, mode=0):
@@ -442,7 +454,7 @@ def init_start_window():
 
     start_text_render.add_text(screen, 732, 280, 50, 'subwaymap', True)
 
-    core.Button(relative_rect=pygame.Rect((725, 350), (195, 50)), text='load previous', manager=start_ui_manager, on_click=lambda self, event: load_game(GAME_DATA.data['previous_game'] if 'previous_game' in GAME_DATA.data else -1))
+    core.Button(relative_rect=pygame.Rect((725, 350), (195, 50)), text='load previous', manager=start_ui_manager, on_click=lambda self, event: load_game(GAME_DATA.data['previous_game']) if len(list(models.GameSession.select())) else 0)
     core.Button(relative_rect=pygame.Rect((925, 350), (145, 50)), text='new game', manager=start_ui_manager, on_click=lambda self, event: game_loop.set_window(new_game_window))
 
     start_text_render.add_text(screen, 35, 410, 20, 'games', True)
@@ -513,8 +525,8 @@ def init_new_game_window():
                 on_click=lambda *args: sprite.generate_new())
     core.Button(relative_rect=pygame.Rect((10, 80), (135, 30)), text='quit', manager=new_game_ui_manager,
                 on_click=lambda *args: game_loop.set_window(start_window))
-    core.Button(relative_rect=pygame.Rect((155, 80), (135, 30)), text='empty', manager=new_game_ui_manager,
-                on_click=lambda: print(1))
+    core.Button(relative_rect=pygame.Rect((155, 80), (135, 30)), text='game guide', manager=new_game_ui_manager,
+                on_click=open_guide)
 
     new_game_text_render.add_text(screen, 10, 125, 15, 'Level (1-3)', True)
 
@@ -546,3 +558,5 @@ game_loop.set_window(start_window)
 
 
 game_loop.loop()
+
+if SESSION: SESSION.save()

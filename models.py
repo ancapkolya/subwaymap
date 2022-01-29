@@ -25,7 +25,6 @@ class JsonModel(BaseModel):
                 self.__data__[field] = json.loads(self.__data__[field])
 
     def dump_data(self):
-        print(self.__data__.keys())
         for field in self._meta.json_fields:
             if self.__data__[field].__class__.__name__ != 'str':
                 self.__data__[field] = json.dumps(self.__data__[field])

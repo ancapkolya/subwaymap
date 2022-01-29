@@ -4,6 +4,7 @@ import random
 import sys
 import pygame
 import pygame_gui
+import webbrowser
 
 import map_core
 import models
@@ -154,7 +155,6 @@ class Window:
         self.clock = None
         for group in self.groups:
             for sprite in group:
-                print(sprite)
                 sprite.kill()
         for sprite in self.ui.ui_group:
             sprite.kill()
@@ -236,6 +236,7 @@ class EconomicsCore:
                 if abs(self.cash_delta) >= 1:
                     self.session.session.cash_amount += self.cash_delta
                     self.cash_delta = 0
+                self.session.session.score += self.daily_flow / 86400 * game_delta.seconds
             else:
                 self.session.end_game('у вас закончились деньги')
 
@@ -243,6 +244,7 @@ class EconomicsCore:
         self.count_people_flow(recount)
         self.update_expenses()
         self.update_revenues()
+        self.daily_flow = sum([i[2] if i[2] < i[0] else i[0] for i in self.routes_data.values()])
 
     def update_expenses(self):
         if self.session:
@@ -278,12 +280,12 @@ class EconomicsCore:
                     for j in i.routes:
                         s_routes.append(j.id)
                 self.stations_data[str(station.id)] = [0, list(set(s_routes))]
-                column_n, row_n = [i - 3 if i > 3 else 0 for i in self.get_cell(station.x-300, station.y-300)]
+                column_n, row_n = [i - 3 if i > 3 else 0 for i in self.get_cell(station.x-300, station.y)]
                 for row in range(row_n, row_n + 7, 1):
                     for column in range(column_n, column_n + 7, 1):
                         self.stations_data[str(station.id)][0] += int(map[column, row])
                 if self.stations_data[str(station.id)][1] != 0:
-                    self.stations_data[str(station.id)][0] //= 10
+                    self.stations_data[str(station.id)][0] //= 20
                 if str(station.id) not in self.station_flow:
                     self.station_flow[str(station.id)] = 0
 
@@ -356,7 +358,6 @@ class Session:
 
     def save(self):
         self.session.datetime = self.clock.datetime
-        print(self.session.meta_data)
         self.session.save()
         self.session.load_data()
 
@@ -461,14 +462,18 @@ class Session:
             for i in range(route.train_n - first_direction):
                 self.sprites.trains[route.id].append(Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id][-1 + -1 * i]), self.clock, self, direction=-1))
 
+    add_new_train = lambda self, route: self.sprites.trains[route.id].append(Train(self.trains_group, route, models.Station.get_by_id(self.routes[route.id][0]), self.clock, self, direction=1))
+
     def get_next_station(self, route, station, direction):
-        ind = self.routes[route.id].index(station.id)
-        direction = direction if 0 <= ind + direction < len(self.routes[route.id]) else -1 * direction
-        return models.Station.get_by_id(self.routes[route.id][direction + ind]), direction
+        if station.id in self.routes[route.id]:
+            ind = self.routes[route.id].index(station.id)
+            direction = direction if 0 <= ind + direction < len(self.routes[route.id]) else -1 * direction
+            return models.Station.get_by_id(self.routes[route.id][direction + ind]), direction
+        else:
+            return False
 
     def build_obj(self, action_data):
         if self.build_cost <= self.session.cash_amount:
-            print(2)
             self.session.cash_amount -= self.build_cost
             self.build_cost = 0
             self.session.meta_data['lines_len'] += self.new_distance
@@ -761,13 +766,16 @@ class Station(pygame.sprite.Sprite):
             routes = []
             for r in self.obj.get_lines():
                 routes.extend(r.routes)
-            for r in [i.id for i in routes]:
-                if str(r) in self.session.session.meta_data['routes_data']:
-                    r_k = self.session.session.meta_data['routes_data'][str(r)][3]
-                    if r_k < 1:
-                        delta_k += 1 - r_k
-                    else:
-                        delta_k -= 0.25
+            if routes:
+                for r in [i.id for i in routes]:
+                    if str(r) in self.session.session.meta_data['routes_data']:
+                        r_k = self.session.session.meta_data['routes_data'][str(r)][3]
+                        if r_k < 1:
+                            delta_k += 1 - r_k
+                        else:
+                            delta_k -= 0.25
+            else:
+                delta_k = 1
             if delta_k > 0:
                 self.session.session.meta_data['station_flow'][str(self.obj.id)] += self.session.session.meta_data['station_data'][str(self.obj.id)][0] * 0.000000058 * game_delta.seconds * delta_k
             elif current_k > 0:
@@ -817,7 +825,6 @@ class Route(pygame.sprite.Sprite):
 
         self.obj = obj
         self.route = route
-        print(route.lines_queue, route.lines_queue.__class__)
 
         self.color = models.ROUTES_COLORS[self.route.color]
         self.image = pygame.Surface((1500, 750), pygame.SRCALPHA, 32)
@@ -891,14 +898,18 @@ class Train(pygame.sprite.Sprite):
             if bp or s:
                 if s and s != self.collided and self.collided_station != s:
                     self.rect.x, self.rect.y = s.rect.x + 4, s.rect.y + 4
-                    self.next_station, self.direction = self.session.get_next_station(self.route, s.obj, self.direction)
-                    if self.next_station.id in s.directions:
-                        self.vx, self.vy = s.directions[self.next_station.id]
+                    next_lst = self.session.get_next_station(self.route, s.obj, self.direction)
+                    if next_lst:
+                        self.next_station, self.direction = self.session.get_next_station(self.route, s.obj, self.direction)
+                        if self.next_station.id in s.directions:
+                            self.vx, self.vy = s.directions[self.next_station.id]
+                        else:
+                            lst = [abs(i - self.next_station.id) for i in s.directions.keys()]
+                            self.vx, self.vy = s.directions[list(s.directions.keys())[lst.index(min(lst))]]
+                        self.collided_station = s
+                        self.collided = s
                     else:
-                        lst = [abs(i - self.next_station.id) for i in s.directions.keys()]
-                        self.vx, self.vy = s.directions[list(s.directions.keys())[lst.index(min(lst))]]
-                    self.collided_station = s
-                    self.collided = s
+                        self.suicide()
                 elif bp and bp != self.collided:
                     self.rect.x, self.rect.y = bp.rect.x - 4, bp.rect.y - 4
                     if self.next_station.id in bp.directions:
@@ -907,3 +918,8 @@ class Train(pygame.sprite.Sprite):
                         lst = [abs(i - self.next_station.id) for i in bp.directions.keys()]
                         self.vx, self.vy = bp.directions[list(bp.directions.keys())[lst.index(min(lst))]]
                     self.collided = bp
+
+    def suicide(self):
+        self.session.add_new_train(self.route)
+        self.session.sprites.trains[self.route.id].remove(self)
+        self.kill()
