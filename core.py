@@ -816,6 +816,7 @@ class Line(pygame.sprite.Sprite):
             pygame.draw.line(self.image, 'white', (x - 300, y), (b_x, y1), 10)
             pygame.draw.line(self.image, 'white', (b_x, y1), (x1 - 300, y1), 8)
             self.breakpoint = BreakPoint(self.break_points_group, (b_x + 300, y1), self.obj.start, self.obj.end)
+        self.breakpoint.routes = self.obj.routes
 
 
 class Route(pygame.sprite.Sprite):
@@ -910,7 +911,7 @@ class Train(pygame.sprite.Sprite):
                         self.collided = s
                     else:
                         self.suicide()
-                elif bp and bp != self.collided:
+                elif bp and bp != self.collided and self.route in bp.routes:
                     self.rect.x, self.rect.y = bp.rect.x - 4, bp.rect.y - 4
                     if self.next_station.id in bp.directions:
                         self.vx, self.vy = bp.directions[self.next_station.id]
