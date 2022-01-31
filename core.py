@@ -405,7 +405,7 @@ class Session:
         self.economics_core.update_economics_properties(recount=False)
 
     def update_lines_map(self):
-        self.kill_array(self.sprites.breakpoints.values())
+        self.break_points_group.empty()
         self.sprites.lines, self.sprites.breakpoints = self.kill_array(self.sprites.lines), dict()
         for line in self.session.lines:
             sprite = Line(self.lines_group, self.break_points_group, line)

@@ -215,8 +215,7 @@ def create_route_fr(btn, event=None, commit=False):
     if commit:
         [obj.save() for obj in action_data.objects]
         SESSION.sprites.routes.extend(action_data.sprites)
-        SESSION.update_routes_map()
-        SESSION.economics_core.update_economics_properties()
+        SESSION.update_map()
         SESSION.save()
     else:
         cond = False
